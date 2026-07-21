@@ -42,6 +42,9 @@
       const User = ({ className }) => (
         <Svg className={className}><path d="M20 21a8 8 0 0 0-16 0" /><circle cx="12" cy="7" r="4" /></Svg>
       );
+      const Users = ({ className }) => (
+        <Svg className={className}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></Svg>
+      );
       const Hash = ({ className }) => (
         <Svg className={className}><line x1="4" y1="9" x2="20" y2="9" /><line x1="4" y1="15" x2="20" y2="15" /><line x1="10" y1="3" x2="8" y2="21" /><line x1="16" y1="3" x2="14" y2="21" /></Svg>
       );
@@ -51,9 +54,50 @@
       const X = ({ className }) => (
         <Svg className={className}><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></Svg>
       );
+      const Download = ({ className }) => (
+        <Svg className={className}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></Svg>
+      );
+      const Eye = ({ className }) => (
+        <Svg className={className}><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></Svg>
+      );
 
       const initialFornecedores = [];
       const initialProdutos = [];
+
+      function ExpandableBadges({ items, maxVisible = 3, renderBadge, emptyText = 'Nenhum' }) {
+        const [expanded, setExpanded] = useState(false);
+        if (!items || items.length === 0) {
+          return <span className="text-xs text-gray-400 italic">{emptyText}</span>;
+        }
+
+        const visibleItems = expanded ? items : items.slice(0, maxVisible);
+        const remainingCount = items.length - maxVisible;
+
+        return (
+          <div className="flex flex-wrap items-center gap-1">
+            {visibleItems.map((item, idx) => renderBadge(item, idx))}
+            {!expanded && remainingCount > 0 && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setExpanded(true); }}
+                className="bg-emerald-100 hover:bg-emerald-200 text-emerald-800 px-2 py-0.5 rounded-full text-xs font-semibold transition-colors cursor-pointer"
+                title="Clique para ver todos"
+              >
+                +{remainingCount} mais
+              </button>
+            )}
+            {expanded && items.length > maxVisible && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setExpanded(false); }}
+                className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-2 py-0.5 rounded-full text-xs font-semibold transition-colors cursor-pointer"
+              >
+                recolher
+              </button>
+            )}
+          </div>
+        );
+      }
 
       function SistemaFornecedores() {
         const API_BASE = '/api';
@@ -80,6 +124,7 @@
         });
         const [searchTerm, setSearchTerm] = useState('');
         const [showModal, setShowModal] = useState(false);
+        const [viewItem, setViewItem] = useState(null);
         const [editingId, setEditingId] = useState(null);
         const [formData, setFormData] = useState({ codigo: '', nome: '', apelido: '', produtos: '' });
         const [selectedProdutos, setSelectedProdutos] = useState([]);
@@ -110,22 +155,99 @@
           try { window.localStorage.setItem(lsProdutosKey, JSON.stringify(produtos)); } catch {}
         }, [produtos]);
 
+        // Mapeamento de quais fornecedores vendem cada produto
+        const fornecedoresDoProdutoMap = useMemo(() => {
+          const map = {};
+          produtos.forEach(p => {
+            const pNome = (p.nome || '').trim().toLowerCase();
+            const list = fornecedores.filter(f => {
+              if (Array.isArray(f.produtoIds) && f.produtoIds.length > 0) {
+                return f.produtoIds.includes(p.id);
+              }
+              if (f.produtos) {
+                const prodNames = f.produtos.split(',').map(s => s.trim().toLowerCase());
+                return prodNames.includes(pNome);
+              }
+              return false;
+            });
+            map[p.id] = list;
+          });
+          return map;
+        }, [fornecedores, produtos]);
+
+        // Total de vínculos ativas
+        const totalVinculacoes = useMemo(() => {
+          return fornecedores.reduce((acc, f) => {
+            if (Array.isArray(f.produtoIds) && f.produtoIds.length > 0) return acc + f.produtoIds.length;
+            if (f.produtos) return acc + f.produtos.split(',').filter(Boolean).length;
+            return acc;
+          }, 0);
+        }, [fornecedores]);
+
         const filteredFornecedores = useMemo(() => {
           if (!searchTerm) return fornecedores;
           const term = searchTerm.toLowerCase();
           return fornecedores.filter(f =>
-            f.codigo.toLowerCase().includes(term) ||
-            f.nome.toLowerCase().includes(term) ||
-            f.apelido.toLowerCase().includes(term) ||
-            f.produtos.toLowerCase().includes(term)
+            (f.codigo || '').toLowerCase().includes(term) ||
+            (f.nome || '').toLowerCase().includes(term) ||
+            (f.apelido || '').toLowerCase().includes(term) ||
+            (f.produtos || '').toLowerCase().includes(term)
           );
         }, [fornecedores, searchTerm]);
 
         const filteredProdutos = useMemo(() => {
           if (!searchTerm) return produtos;
           const term = searchTerm.toLowerCase();
-          return produtos.filter(p => p.codigo.toLowerCase().includes(term) || p.nome.toLowerCase().includes(term));
-        }, [produtos, searchTerm]);
+          return produtos.filter(p => {
+            const matchCodeOrName = (p.codigo || '').toLowerCase().includes(term) || (p.nome || '').toLowerCase().includes(term);
+            const suppliers = fornecedoresDoProdutoMap[p.id] || [];
+            const matchSupplier = suppliers.some(s =>
+              (s.nome || '').toLowerCase().includes(term) ||
+              (s.codigo || '').toLowerCase().includes(term) ||
+              (s.apelido || '').toLowerCase().includes(term)
+            );
+            return matchCodeOrName || matchSupplier;
+          });
+        }, [produtos, searchTerm, fornecedoresDoProdutoMap]);
+
+        const handleExportCSV = () => {
+          if (activeTab === 'fornecedores') {
+            const headers = ['Código', 'Nome', 'Apelido', 'Produtos'];
+            const rows = filteredFornecedores.map(f => [
+              `"${f.codigo || ''}"`,
+              `"${(f.nome || '').replace(/"/g, '""')}"`,
+              `"${(f.apelido || '').replace(/"/g, '""')}"`,
+              `"${(f.produtos || '').replace(/"/g, '""')}"`
+            ]);
+            const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement('a');
+            link.setAttribute('href', encodedUri);
+            link.setAttribute('download', `fornecedores_ceasa_${new Date().toISOString().slice(0,10)}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+          } else {
+            const headers = ['Código', 'Nome do Produto', 'Fornecedores'];
+            const rows = filteredProdutos.map(p => {
+              const suppliers = fornecedoresDoProdutoMap[p.id] || [];
+              const suppStr = suppliers.map(s => `${s.codigo} - ${s.nome}`).join('; ');
+              return [
+                `"${p.codigo || ''}"`,
+                `"${(p.nome || '').replace(/"/g, '""')}"`,
+                `"${suppStr.replace(/"/g, '""')}"`
+              ];
+            });
+            const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement('a');
+            link.setAttribute('href', encodedUri);
+            link.setAttribute('download', `produtos_ceasa_${new Date().toISOString().slice(0,10)}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+          }
+        };
 
         const handleOpenModal = (item = null) => {
           if (activeTab === 'fornecedores') {
@@ -135,7 +257,7 @@
               if (Array.isArray(item.produtoIds)) {
                 setSelectedProdutos(item.produtoIds);
               } else {
-                const produtosArray = item.produtos.split(',').map(p => p.trim()).map(nome => {
+                const produtosArray = (item.produtos || '').split(',').map(p => p.trim()).map(nome => {
                   const produto = produtos.find(prod => prod.nome.toLowerCase() === nome.toLowerCase());
                   return produto ? produto.id : null;
                 }).filter(id => id !== null);
@@ -219,162 +341,246 @@
         const handleTabChange = (tab) => { setActiveTab(tab); setSearchTerm(''); };
         const toggleProduto = (produtoId) => { setSelectedProdutos(prev => prev.includes(produtoId) ? prev.filter(id => id !== produtoId) : [...prev, produtoId]); };
         const removeProduto = (produtoId) => { setSelectedProdutos(prev => prev.filter(id => id !== produtoId)); };
+
         const filteredProdutosDropdown = useMemo(() => {
           if (!produtoSearchTerm) return produtos;
           const term = produtoSearchTerm.toLowerCase();
-          return produtos.filter(p => p.codigo.toLowerCase().includes(term) || p.nome.toLowerCase().includes(term));
+          return produtos.filter(p => (p.codigo || '').toLowerCase().includes(term) || (p.nome || '').toLowerCase().includes(term));
         }, [produtos, produtoSearchTerm]);
 
         return (
           <div className="min-h-screen bg-gradient-to-br from-green-50 via-emerald-50 to-teal-50">
-            <div className="bg-gradient-to-r from-green-600 to-emerald-600 text-white shadow-lg">
-              <div className="max-w-7xl mx-auto px-6 py-6">
-                <div className="flex items-center gap-3">
-                  <div>
-                    <h1 className="text-3xl font-bold">Sistema de Fornecedores</h1>
-                    <p className="text-green-100 text-sm mt-1">CEASA - Gerenciamento Integrado</p>
-                  </div>
+            {/* Header com Cartões de Métricas Discretos e Compactos */}
+            <div className="bg-gradient-to-r from-green-600 via-emerald-600 to-teal-700 text-white shadow-lg">
+              <div className="max-w-7xl mx-auto px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                  <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Fornecedores CEASA</h1>
+                  <p className="text-green-100 text-xs sm:text-sm opacity-90">Gerenciamento Integrado &amp; Cotações</p>
+                </div>
+                
+                {/* Cartões de Métricas Discretos */}
+                <div className="flex items-center gap-3 text-xs font-medium text-emerald-100 bg-black/15 px-3.5 py-1.5 rounded-full border border-white/10 backdrop-blur-sm self-start sm:self-auto">
+                  <span className="flex items-center gap-1.5" title="Total de Fornecedores Cadastrados">
+                    <Users className="w-3.5 h-3.5 text-emerald-300" />
+                    <span className="font-bold text-white">{fornecedores.length}</span>
+                    <span className="hidden md:inline">Fornecedores</span>
+                  </span>
+                  <span className="text-emerald-400/40">•</span>
+                  <span className="flex items-center gap-1.5" title="Total de Produtos no Catálogo">
+                    <Package className="w-3.5 h-3.5 text-emerald-300" />
+                    <span className="font-bold text-white">{produtos.length}</span>
+                    <span className="hidden md:inline">Produtos</span>
+                  </span>
+                  <span className="text-emerald-400/40">•</span>
+                  <span className="flex items-center gap-1.5" title="Total de Vínculos de Produtos">
+                    <Tag className="w-3.5 h-3.5 text-emerald-300" />
+                    <span className="font-bold text-white">{totalVinculacoes}</span>
+                    <span className="hidden md:inline">Vínculos</span>
+                  </span>
                 </div>
               </div>
             </div>
 
+            {/* Abas Principais */}
             <div className="max-w-7xl mx-auto px-6 pt-6">
               <div className="bg-white rounded-t-xl shadow-md overflow-hidden">
                 <div className="flex border-b border-gray-200">
                   <button onClick={() => handleTabChange('fornecedores')} className={`flex-1 px-6 py-4 font-semibold transition-colors flex items-center justify-center gap-2 ${activeTab === 'fornecedores' ? 'bg-gradient-to-r from-green-600 to-emerald-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
                     <User className="w-5 h-5" />
-                    Fornecedores
+                    Fornecedores ({filteredFornecedores.length})
                   </button>
                   <button onClick={() => handleTabChange('produtos')} className={`flex-1 px-6 py-4 font-semibold transition-colors flex items-center justify-center gap-2 ${activeTab === 'produtos' ? 'bg-gradient-to-r from-green-600 to-emerald-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
                     <Package className="w-5 h-5" />
-                    Produtos
+                    Produtos &amp; Fornecedores ({filteredProdutos.length})
                   </button>
                 </div>
               </div>
             </div>
 
+            {/* Barra de Busca e Ações */}
             <div className="max-w-7xl mx-auto px-6 pb-8">
-              <div className="bg-white rounded-b-xl shadow-md p-6 mb-6">
-                <div className="flex flex-col md:flex-row gap-4">
+              <div className="bg-white rounded-b-xl shadow-md p-4 sm:p-6 mb-6">
+                <div className="flex flex-col sm:flex-row gap-3">
                   <div className="flex-1 relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                    <input type="text" placeholder={activeTab === 'fornecedores' ? 'Buscar por código, nome, apelido ou produtos...' : 'Buscar por código ou nome do produto...'} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-lg focus:border-green-500 focus:outline-none transition-colors" />
+                    <Search className="absolute left-3.5 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                    <input
+                      type="text"
+                      placeholder={activeTab === 'fornecedores' ? 'Buscar por código, nome, apelido ou produtos...' : 'Buscar por código, nome do produto ou fornecedor...'}
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="w-full pl-10 pr-10 py-2.5 border-2 border-gray-200 rounded-lg focus:border-green-500 focus:outline-none transition-colors text-sm"
+                    />
+                    {searchTerm && (
+                      <button
+                        onClick={() => setSearchTerm('')}
+                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1"
+                        title="Limpar busca"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
-                  <button onClick={() => handleOpenModal()} className="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-3 rounded-lg font-semibold flex items-center gap-2 hover:from-green-700 hover:to-emerald-700 transition-all shadow-md hover:shadow-lg">
+
+                  <button
+                    onClick={handleExportCSV}
+                    className="bg-gray-100 text-gray-700 hover:bg-gray-200 px-4 py-2.5 rounded-lg font-semibold text-sm flex items-center justify-center gap-2 transition-colors border border-gray-200 shadow-xs"
+                    title="Exportar listagem em arquivo CSV"
+                  >
+                    <Download className="w-4 h-4 text-gray-600" />
+                    <span>Exportar CSV</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleOpenModal()}
+                    className="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-5 py-2.5 rounded-lg font-semibold text-sm flex items-center justify-center gap-2 hover:from-green-700 hover:to-emerald-700 transition-all shadow-md hover:shadow-lg"
+                  >
                     <Plus className="w-5 h-5" />
-                    {activeTab === 'fornecedores' ? 'Novo Fornecedor' : 'Novo Produto'}
+                    <span>{activeTab === 'fornecedores' ? 'Novo Fornecedor' : 'Novo Produto'}</span>
                   </button>
                 </div>
               </div>
 
+              {/* Tabela de Fornecedores */}
               {activeTab === 'fornecedores' && (
-                <div className="bg-white rounded-xl shadow-md overflow-hidden">
+                <div className="bg-white rounded-xl shadow-md overflow-hidden border border-gray-100">
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead className="bg-gradient-to-r from-green-600 to-emerald-600 text-white">
                         <tr>
-                          <th className="px-6 py-4 text-left text-sm font-semibold">Código</th>
-                          <th className="px-6 py-4 text-left text-sm font-semibold">Nome</th>
-                          <th className="px-6 py-4 text-left text-sm font-semibold">Apelido</th>
-                          <th className="px-6 py-4 text-left text-sm font-semibold">Produtos</th>
-                          <th className="px-6 py-4 text-center text-sm font-semibold">Ações</th>
+                          <th className="px-6 py-3.5 text-left text-xs font-bold uppercase tracking-wider">Código</th>
+                          <th className="px-6 py-3.5 text-left text-xs font-bold uppercase tracking-wider">Nome</th>
+                          <th className="px-6 py-3.5 text-left text-xs font-bold uppercase tracking-wider">Apelido</th>
+                          <th className="px-6 py-3.5 text-left text-xs font-bold uppercase tracking-wider">Produtos Fornecidos</th>
+                          <th className="px-6 py-3.5 text-center text-xs font-bold uppercase tracking-wider">Ações</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-200">
-                        {filteredFornecedores.map((fornecedor, index) => (
-                          <tr key={fornecedor.id} className={`hover:bg-green-50 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
-                            <td className="px-6 py-4">
-                              <div className="flex items-center gap-2">
-                                <Hash className="w-4 h-4 text-green-600" />
-                                <span className="font-semibold text-green-700">{fornecedor.codigo}</span>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4">
-                              <span className="font-medium text-gray-800">{fornecedor.nome}</span>
-                            </td>
-                            <td className="px-6 py-4">
-                              <div className="flex items-center gap-2">
-                                <Tag className="w-4 h-4 text-emerald-600" />
-                                <span className="text-gray-700">{fornecedor.apelido}</span>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4">
-                              <div className="flex flex-wrap gap-1">
-                                {(String(fornecedor.produtos || '')).split(',').filter(Boolean).map((produtoNome, idx) => {
-                                  const produto = produtos.find(p => p.nome.toLowerCase() === produtoNome.trim().toLowerCase());
-                                  return (
-                                    <span key={idx} className="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs font-medium">
-                                      {produto ? `${produto.codigo} - ${produto.nome}` : produtoNome.trim()}
+                      <tbody className="divide-y divide-gray-200 text-sm">
+                        {filteredFornecedores.map((fornecedor, index) => {
+                          const rawProds = (String(fornecedor.produtos || '')).split(',').filter(Boolean).map(s => s.trim());
+                          const prodObjList = rawProds.map(pName => {
+                            const found = produtos.find(prod => (prod.nome || '').toLowerCase() === pName.toLowerCase());
+                            return found ? { codigo: found.codigo, nome: found.nome } : { codigo: '', nome: pName };
+                          });
+
+                          return (
+                            <tr key={fornecedor.id} className={`hover:bg-green-50/60 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
+                              <td className="px-6 py-3.5">
+                                <div className="flex items-center gap-1.5">
+                                  <Hash className="w-4 h-4 text-green-600" />
+                                  <span className="font-semibold text-green-700">{fornecedor.codigo}</span>
+                                </div>
+                              </td>
+                              <td className="px-6 py-3.5">
+                                <span className="font-semibold text-gray-800">{fornecedor.nome}</span>
+                              </td>
+                              <td className="px-6 py-3.5">
+                                <div className="flex items-center gap-1.5">
+                                  <Tag className="w-4 h-4 text-emerald-600" />
+                                  <span className="text-gray-700">{fornecedor.apelido || '—'}</span>
+                                </div>
+                              </td>
+                              <td className="px-6 py-3.5">
+                                <ExpandableBadges
+                                  items={prodObjList}
+                                  maxVisible={3}
+                                  emptyText="Nenhum produto vinculado"
+                                  renderBadge={(pItem, idx) => (
+                                    <span key={idx} className="bg-green-100/90 text-green-800 border border-green-200/60 px-2.5 py-0.5 rounded-full text-xs font-medium">
+                                      {pItem.codigo ? `${pItem.codigo} - ${pItem.nome}` : pItem.nome}
                                     </span>
-                                  );
-                                })}
-                              </div>
-                            </td>
-                            <td className="px-6 py-4">
-                              <div className="flex justify-center gap-2">
-                                <button onClick={() => handleOpenModal(fornecedor)} className="p-2 bg-blue-100 text-blue-600 rounded-lg hover:bg-blue-200 transition-colors" title="Editar">
-                                  <Edit2 className="w-4 h-4" />
-                                </button>
-                                <button onClick={() => handleDelete(fornecedor.id)} className="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-colors" title="Excluir">
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
+                                  )}
+                                />
+                              </td>
+                              <td className="px-6 py-3.5">
+                                <div className="flex justify-center gap-1.5">
+                                  <button onClick={() => setViewItem({ type: 'fornecedor', data: fornecedor, productList: prodObjList })} className="p-1.5 bg-gray-100 text-gray-600 rounded-md hover:bg-gray-200 transition-colors" title="Visualizar Ficha">
+                                    <Eye className="w-4 h-4" />
+                                  </button>
+                                  <button onClick={() => handleOpenModal(fornecedor)} className="p-1.5 bg-blue-50 text-blue-600 rounded-md hover:bg-blue-100 transition-colors" title="Editar">
+                                    <Edit2 className="w-4 h-4" />
+                                  </button>
+                                  <button onClick={() => handleDelete(fornecedor.id)} className="p-1.5 bg-red-50 text-red-600 rounded-md hover:bg-red-100 transition-colors" title="Excluir">
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                     {filteredFornecedores.length === 0 && (
                       <div className="text-center py-12 text-gray-500">
-                        <User className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                        <p>Nenhum fornecedor encontrado</p>
+                        <User className="w-12 h-12 mx-auto mb-3 opacity-40 text-green-600" />
+                        <p className="font-medium">Nenhum fornecedor encontrado</p>
                       </div>
                     )}
                   </div>
                 </div>
               )}
 
+              {/* Tabela de Produtos (com Busca Reversa de Fornecedores) */}
               {activeTab === 'produtos' && (
-                <div className="bg-white rounded-xl shadow-md overflow-hidden">
+                <div className="bg-white rounded-xl shadow-md overflow-hidden border border-gray-100">
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead className="bg-gradient-to-r from-green-600 to-emerald-600 text-white">
                         <tr>
-                          <th className="px-6 py-4 text-left text-sm font-semibold">Código</th>
-                          <th className="px-6 py-4 text-left text-sm font-semibold">Nome do Produto</th>
-                          <th className="px-6 py-4 text-center text-sm font-semibold">Ações</th>
+                          <th className="px-6 py-3.5 text-left text-xs font-bold uppercase tracking-wider">Código</th>
+                          <th className="px-6 py-3.5 text-left text-xs font-bold uppercase tracking-wider">Nome do Produto</th>
+                          <th className="px-6 py-3.5 text-left text-xs font-bold uppercase tracking-wider">Fornecedores que Vendem</th>
+                          <th className="px-6 py-3.5 text-center text-xs font-bold uppercase tracking-wider">Ações</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-200">
-                        {filteredProdutos.map((produto, index) => (
-                          <tr key={produto.id} className={`hover:bg-green-50 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
-                            <td className="px-6 py-4">
-                              <div className="flex items-center gap-2">
-                                <Hash className="w-4 h-4 text-green-600" />
-                                <span className="font-semibold text-green-700">{produto.codigo}</span>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4">
-                              <span className="font-medium text-gray-800">{produto.nome}</span>
-                            </td>
-                            <td className="px-6 py-4">
-                              <div className="flex justify-center gap-2">
-                                <button onClick={() => handleOpenModal(produto)} className="p-2 bg-blue-100 text-blue-600 rounded-lg hover:bg-blue-200 transition-colors" title="Editar">
-                                  <Edit2 className="w-4 h-4" />
-                                </button>
-                                <button onClick={() => handleDelete(produto.id)} className="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-colors" title="Excluir">
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
+                      <tbody className="divide-y divide-gray-200 text-sm">
+                        {filteredProdutos.map((produto, index) => {
+                          const suppliers = fornecedoresDoProdutoMap[produto.id] || [];
+                          return (
+                            <tr key={produto.id} className={`hover:bg-green-50/60 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
+                              <td className="px-6 py-3.5">
+                                <div className="flex items-center gap-1.5 font-semibold text-green-700">
+                                  <Hash className="w-4 h-4 text-green-600" />
+                                  <span>{produto.codigo}</span>
+                                </div>
+                              </td>
+                              <td className="px-6 py-3.5">
+                                <span className="font-semibold text-gray-800">{produto.nome}</span>
+                              </td>
+                              <td className="px-6 py-3.5">
+                                <ExpandableBadges
+                                  items={suppliers}
+                                  maxVisible={3}
+                                  emptyText="Nenhum fornecedor vinculado"
+                                  renderBadge={(s, idx) => (
+                                    <span key={s.id || idx} className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-2.5 py-0.5 rounded-full text-xs font-medium inline-flex items-center gap-1">
+                                      <span className="font-bold text-emerald-700">#{s.codigo}</span>
+                                      <span>{s.apelido || s.nome}</span>
+                                    </span>
+                                  )}
+                                />
+                              </td>
+                              <td className="px-6 py-3.5">
+                                <div className="flex justify-center gap-1.5">
+                                  <button onClick={() => setViewItem({ type: 'produto', data: produto, suppliers })} className="p-1.5 bg-gray-100 text-gray-600 rounded-md hover:bg-gray-200 transition-colors" title="Visualizar Detalhes">
+                                    <Eye className="w-4 h-4" />
+                                  </button>
+                                  <button onClick={() => handleOpenModal(produto)} className="p-1.5 bg-blue-50 text-blue-600 rounded-md hover:bg-blue-100 transition-colors" title="Editar">
+                                    <Edit2 className="w-4 h-4" />
+                                  </button>
+                                  <button onClick={() => handleDelete(produto.id)} className="p-1.5 bg-red-50 text-red-600 rounded-md hover:bg-red-100 transition-colors" title="Excluir">
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                     {filteredProdutos.length === 0 && (
                       <div className="text-center py-12 text-gray-500">
-                        <Package className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                        <p>Nenhum produto encontrado</p>
+                        <Package className="w-12 h-12 mx-auto mb-3 opacity-40 text-green-600" />
+                        <p className="font-medium">Nenhum produto encontrado</p>
                       </div>
                     )}
                   </div>
@@ -382,12 +588,123 @@
               )}
             </div>
 
+            {/* Modal de Detalhes (Quick View) */}
+            {viewItem && (
+              <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+                <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden border border-gray-100">
+                  <div className="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-4 flex justify-between items-center">
+                    <div className="flex items-center gap-2">
+                      <Eye className="w-5 h-5" />
+                      <h2 className="text-lg font-bold">
+                        {viewItem.type === 'fornecedor' ? 'Ficha do Fornecedor' : 'Detalhes do Produto'}
+                      </h2>
+                    </div>
+                    <button onClick={() => setViewItem(null)} className="hover:bg-white/20 rounded-lg p-1 transition-colors">
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                  <div className="p-6 space-y-4 text-sm">
+                    {viewItem.type === 'fornecedor' ? (
+                      <>
+                        <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-xl border border-gray-100">
+                          <div>
+                            <span className="text-xs font-semibold text-gray-500 uppercase block">Código</span>
+                            <span className="text-base font-bold text-green-700">#{viewItem.data.codigo}</span>
+                          </div>
+                          <div>
+                            <span className="text-xs font-semibold text-gray-500 uppercase block">Apelido</span>
+                            <span className="text-base font-medium text-gray-800">{viewItem.data.apelido || '—'}</span>
+                          </div>
+                          <div className="col-span-2">
+                            <span className="text-xs font-semibold text-gray-500 uppercase block">Nome Completo</span>
+                            <span className="text-base font-semibold text-gray-900">{viewItem.data.nome}</span>
+                          </div>
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-gray-700 mb-2 flex items-center gap-2">
+                            <Package className="w-4 h-4 text-green-600" />
+                            Produtos Fornecidos ({viewItem.productList.length})
+                          </h3>
+                          <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto p-3 bg-green-50/50 rounded-xl border border-green-100">
+                            {viewItem.productList.length === 0 ? (
+                              <span className="text-gray-400 italic">Nenhum produto vinculado</span>
+                            ) : (
+                              viewItem.productList.map((p, idx) => (
+                                <span key={idx} className="bg-white text-green-800 border border-green-200 px-3 py-1 rounded-full text-xs font-semibold shadow-xs">
+                                  {p.codigo ? `${p.codigo} - ${p.nome}` : p.nome}
+                                </span>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-xl border border-gray-100">
+                          <div>
+                            <span className="text-xs font-semibold text-gray-500 uppercase block">Código do Produto</span>
+                            <span className="text-base font-bold text-green-700">#{viewItem.data.codigo}</span>
+                          </div>
+                          <div>
+                            <span className="text-xs font-semibold text-gray-500 uppercase block">Total Fornecedores</span>
+                            <span className="text-base font-bold text-emerald-600">{viewItem.suppliers.length}</span>
+                          </div>
+                          <div className="col-span-2">
+                            <span className="text-xs font-semibold text-gray-500 uppercase block">Nome do Produto</span>
+                            <span className="text-base font-semibold text-gray-900">{viewItem.data.nome}</span>
+                          </div>
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-gray-700 mb-2 flex items-center gap-2">
+                            <User className="w-4 h-4 text-green-600" />
+                            Fornecedores Que Comercializam ({viewItem.suppliers.length})
+                          </h3>
+                          <div className="space-y-1.5 max-h-48 overflow-y-auto p-3 bg-gray-50 rounded-xl border border-gray-200">
+                            {viewItem.suppliers.length === 0 ? (
+                              <span className="text-gray-400 italic">Nenhum fornecedor vinculado a este produto</span>
+                            ) : (
+                              viewItem.suppliers.map((s) => (
+                                <div key={s.id} className="flex items-center justify-between bg-white p-2.5 rounded-lg border border-gray-100 shadow-xs">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-bold text-green-700 text-xs bg-green-50 px-2 py-0.5 rounded">#{s.codigo}</span>
+                                    <span className="font-medium text-gray-800">{s.nome}</span>
+                                  </div>
+                                  {s.apelido && <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">({s.apelido})</span>}
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                    <div className="pt-2 flex justify-end gap-2">
+                      <button onClick={() => setViewItem(null)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-semibold hover:bg-gray-200 transition-colors">
+                        Fechar
+                      </button>
+                      <button
+                        onClick={() => {
+                          const item = viewItem.data;
+                          setViewItem(null);
+                          handleOpenModal(item);
+                        }}
+                        className="px-4 py-2 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition-colors flex items-center gap-1.5"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                        Editar
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Modal de Criação / Edição de Fornecedores */}
             {showModal && activeTab === 'fornecedores' && (
-              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+              <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
                 <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
                   <div className="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-4 rounded-t-2xl flex justify-between items-center">
                     <h2 className="text-xl font-bold">{editingId ? 'Editar Fornecedor' : 'Novo Fornecedor'}</h2>
-                    <button onClick={handleCloseModal} className="hover:bg-white hover:bg-opacity-20 rounded-lg p-1">
+                    <button onClick={handleCloseModal} className="hover:bg-white/20 rounded-lg p-1 transition-colors">
                       <X className="w-6 h-6" />
                     </button>
                   </div>
@@ -454,12 +771,13 @@
               </div>
             )}
 
+            {/* Modal de Criação / Edição de Produtos */}
             {showModal && activeTab === 'produtos' && (
-              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+              <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
                 <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
                   <div className="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-4 rounded-t-2xl flex justify-between items-center">
                     <h2 className="text-xl font-bold">{editingId ? 'Editar Produto' : 'Novo Produto'}</h2>
-                    <button onClick={handleCloseModal} className="hover:bg-white hover:bg-opacity-20 rounded-lg p-1">
+                    <button onClick={handleCloseModal} className="hover:bg-white/20 rounded-lg p-1 transition-colors">
                       <X className="w-6 h-6" />
                     </button>
                   </div>
