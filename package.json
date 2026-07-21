@@ -1,0 +1,16 @@
+{
+  "name": "fornecedores-ceasa",
+  "version": "1.0.0",
+  "description": "Sistema de Fornecedores da CEASA (Migrado para Vercel Serverless)",
+  "main": "index.html",
+  "scripts": {
+    "dev": "node --env-file=.env dev-server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.17.4"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

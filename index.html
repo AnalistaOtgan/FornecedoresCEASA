@@ -1,0 +1,491 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Fornecedores CEASA</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+      html, body { height: 100%; }
+      body { font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, sans-serif; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+    <script type="text/babel" data-presets="react">
+      const { useState, useMemo, useEffect } = React;
+
+      const Svg = ({ className, children }) => (
+        <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{children}</svg>
+      );
+      const Search = ({ className }) => (
+        <Svg className={className}><circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></Svg>
+      );
+      const Plus = ({ className }) => (
+        <Svg className={className}><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></Svg>
+      );
+      const Edit2 = ({ className }) => (
+        <Svg className={className}><path d="M17 3a2.828 2.828 0 1 1 4 4L7 21H3v-4L17 3z" /></Svg>
+      );
+      const Trash2 = ({ className }) => (
+        <Svg className={className}><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M10 11v6" /><path d="M14 11v6" /><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" /></Svg>
+      );
+      const Package = ({ className }) => (
+        <Svg className={className}><path d="M16.5 9.4 7.5 4.21" /><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="M3.3 7L12 12l8.7-5" /></Svg>
+      );
+      const User = ({ className }) => (
+        <Svg className={className}><path d="M20 21a8 8 0 0 0-16 0" /><circle cx="12" cy="7" r="4" /></Svg>
+      );
+      const Hash = ({ className }) => (
+        <Svg className={className}><line x1="4" y1="9" x2="20" y2="9" /><line x1="4" y1="15" x2="20" y2="15" /><line x1="10" y1="3" x2="8" y2="21" /><line x1="16" y1="3" x2="14" y2="21" /></Svg>
+      );
+      const Tag = ({ className }) => (
+        <Svg className={className}><path d="M7 7h4l7 7-4 4-7-7V7z" /><circle cx="9" cy="9" r="1.5" /></Svg>
+      );
+      const X = ({ className }) => (
+        <Svg className={className}><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></Svg>
+      );
+
+      const initialFornecedores = [];
+      const initialProdutos = [];
+
+      function SistemaFornecedores() {
+        const API_BASE = '/api';
+        const lsFornecedoresKey = 'ceasa_fornecedores_fornecedores_v2';
+        const lsProdutosKey = 'ceasa_fornecedores_produtos_v2';
+        const [activeTab, setActiveTab] = useState('fornecedores');
+        const [fornecedores, setFornecedores] = useState(() => {
+          try {
+            const raw = typeof window !== 'undefined' ? window.localStorage.getItem(lsFornecedoresKey) : null;
+            const parsed = raw ? JSON.parse(raw) : null;
+            return Array.isArray(parsed) ? parsed : initialFornecedores;
+          } catch {
+            return initialFornecedores;
+          }
+        });
+        const [produtos, setProdutos] = useState(() => {
+          try {
+            const raw = typeof window !== 'undefined' ? window.localStorage.getItem(lsProdutosKey) : null;
+            const parsed = raw ? JSON.parse(raw) : null;
+            return Array.isArray(parsed) ? parsed : initialProdutos;
+          } catch {
+            return initialProdutos;
+          }
+        });
+        const [searchTerm, setSearchTerm] = useState('');
+        const [showModal, setShowModal] = useState(false);
+        const [editingId, setEditingId] = useState(null);
+        const [formData, setFormData] = useState({ codigo: '', nome: '', apelido: '', produtos: '' });
+        const [selectedProdutos, setSelectedProdutos] = useState([]);
+        const [showProdutoDropdown, setShowProdutoDropdown] = useState(false);
+        const [produtoSearchTerm, setProdutoSearchTerm] = useState('');
+        const [produtoFormData, setProdutoFormData] = useState({ codigo: '', nome: '' });
+
+        useEffect(() => {
+          const load = async () => {
+            try {
+              const prRes = await fetch(`${API_BASE}/produtos`);
+              const pr = await prRes.json();
+              if (Array.isArray(pr)) setProdutos(pr);
+            } catch {}
+            try {
+              const fRes = await fetch(`${API_BASE}/fornecedores`);
+              const f = await fRes.json();
+              if (Array.isArray(f)) setFornecedores(f);
+            } catch {}
+          };
+          load();
+        }, []);
+
+        useEffect(() => {
+          try { window.localStorage.setItem(lsFornecedoresKey, JSON.stringify(fornecedores)); } catch {}
+        }, [fornecedores]);
+        useEffect(() => {
+          try { window.localStorage.setItem(lsProdutosKey, JSON.stringify(produtos)); } catch {}
+        }, [produtos]);
+
+        const filteredFornecedores = useMemo(() => {
+          if (!searchTerm) return fornecedores;
+          const term = searchTerm.toLowerCase();
+          return fornecedores.filter(f =>
+            f.codigo.toLowerCase().includes(term) ||
+            f.nome.toLowerCase().includes(term) ||
+            f.apelido.toLowerCase().includes(term) ||
+            f.produtos.toLowerCase().includes(term)
+          );
+        }, [fornecedores, searchTerm]);
+
+        const filteredProdutos = useMemo(() => {
+          if (!searchTerm) return produtos;
+          const term = searchTerm.toLowerCase();
+          return produtos.filter(p => p.codigo.toLowerCase().includes(term) || p.nome.toLowerCase().includes(term));
+        }, [produtos, searchTerm]);
+
+        const handleOpenModal = (item = null) => {
+          if (activeTab === 'fornecedores') {
+            if (item) {
+              setEditingId(item.id);
+              setFormData({ codigo: item.codigo, nome: item.nome, apelido: item.apelido, produtos: item.produtos });
+              if (Array.isArray(item.produtoIds)) {
+                setSelectedProdutos(item.produtoIds);
+              } else {
+                const produtosArray = item.produtos.split(',').map(p => p.trim()).map(nome => {
+                  const produto = produtos.find(prod => prod.nome.toLowerCase() === nome.toLowerCase());
+                  return produto ? produto.id : null;
+                }).filter(id => id !== null);
+                setSelectedProdutos(produtosArray);
+              }
+            } else {
+              setEditingId(null);
+              setFormData({ codigo: '', nome: '', apelido: '', produtos: '' });
+              setSelectedProdutos([]);
+            }
+          } else {
+            if (item) {
+              setEditingId(item.id);
+              setProdutoFormData({ codigo: item.codigo, nome: item.nome });
+            } else {
+              setEditingId(null);
+              setProdutoFormData({ codigo: '', nome: '' });
+            }
+          }
+          setProdutoSearchTerm('');
+          setShowModal(true);
+        };
+
+        const handleCloseModal = () => {
+          setShowModal(false);
+          setEditingId(null);
+          setFormData({ codigo: '', nome: '', apelido: '', produtos: '' });
+          setProdutoFormData({ codigo: '', nome: '' });
+          setSelectedProdutos([]);
+          setProdutoSearchTerm('');
+          setShowProdutoDropdown(false);
+        };
+
+        const handleSaveFornecedor = async () => {
+          if (!formData.codigo || !formData.nome) { alert('Código e Nome são obrigatórios!'); return; }
+          const payload = { codigo: formData.codigo, nome: formData.nome, apelido: formData.apelido, produtoIds: selectedProdutos };
+          if (editingId) {
+            try {
+              const res = await fetch(`${API_BASE}/fornecedores?id=${editingId}&_method=PUT`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+              const saved = await res.json();
+              setFornecedores(fornecedores.map(f => f.id === editingId ? saved : f));
+            } catch {}
+          } else {
+            try {
+              const res = await fetch(`${API_BASE}/fornecedores`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+              const saved = await res.json();
+              setFornecedores([...fornecedores, saved]);
+            } catch {}
+          }
+          handleCloseModal();
+        };
+
+        const handleSaveProduto = async () => {
+          if (!produtoFormData.codigo || !produtoFormData.nome) { alert('Código e Nome são obrigatórios!'); return; }
+          if (editingId) {
+            try {
+              const res = await fetch(`${API_BASE}/produtos?id=${editingId}&_method=PUT`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(produtoFormData) });
+              const saved = await res.json();
+              setProdutos(produtos.map(p => p.id === editingId ? saved : p));
+            } catch {}
+          } else {
+            try {
+              const res = await fetch(`${API_BASE}/produtos`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(produtoFormData) });
+              const saved = await res.json();
+              setProdutos([...produtos, saved]);
+            } catch {}
+          }
+          handleCloseModal();
+        };
+
+        const handleDelete = async (id) => {
+          if (window.confirm(`Tem certeza que deseja excluir este ${activeTab === 'fornecedores' ? 'fornecedor' : 'produto'}?`)) {
+            if (activeTab === 'fornecedores') {
+              try { await fetch(`${API_BASE}/fornecedores?id=${id}&_method=DELETE`, { method: 'POST' }); setFornecedores(fornecedores.filter(f => f.id !== id)); } catch {}
+            } else {
+              try { await fetch(`${API_BASE}/produtos?id=${id}&_method=DELETE`, { method: 'POST' }); setProdutos(produtos.filter(p => p.id !== id)); } catch {}
+            }
+          }
+        };
+
+        const handleTabChange = (tab) => { setActiveTab(tab); setSearchTerm(''); };
+        const toggleProduto = (produtoId) => { setSelectedProdutos(prev => prev.includes(produtoId) ? prev.filter(id => id !== produtoId) : [...prev, produtoId]); };
+        const removeProduto = (produtoId) => { setSelectedProdutos(prev => prev.filter(id => id !== produtoId)); };
+        const filteredProdutosDropdown = useMemo(() => {
+          if (!produtoSearchTerm) return produtos;
+          const term = produtoSearchTerm.toLowerCase();
+          return produtos.filter(p => p.codigo.toLowerCase().includes(term) || p.nome.toLowerCase().includes(term));
+        }, [produtos, produtoSearchTerm]);
+
+        return (
+          <div className="min-h-screen bg-gradient-to-br from-green-50 via-emerald-50 to-teal-50">
+            <div className="bg-gradient-to-r from-green-600 to-emerald-600 text-white shadow-lg">
+              <div className="max-w-7xl mx-auto px-6 py-6">
+                <div className="flex items-center gap-3">
+                  <div>
+                    <h1 className="text-3xl font-bold">Sistema de Fornecedores</h1>
+                    <p className="text-green-100 text-sm mt-1">CEASA - Gerenciamento Integrado</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="max-w-7xl mx-auto px-6 pt-6">
+              <div className="bg-white rounded-t-xl shadow-md overflow-hidden">
+                <div className="flex border-b border-gray-200">
+                  <button onClick={() => handleTabChange('fornecedores')} className={`flex-1 px-6 py-4 font-semibold transition-colors flex items-center justify-center gap-2 ${activeTab === 'fornecedores' ? 'bg-gradient-to-r from-green-600 to-emerald-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
+                    <User className="w-5 h-5" />
+                    Fornecedores
+                  </button>
+                  <button onClick={() => handleTabChange('produtos')} className={`flex-1 px-6 py-4 font-semibold transition-colors flex items-center justify-center gap-2 ${activeTab === 'produtos' ? 'bg-gradient-to-r from-green-600 to-emerald-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
+                    <Package className="w-5 h-5" />
+                    Produtos
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="max-w-7xl mx-auto px-6 pb-8">
+              <div className="bg-white rounded-b-xl shadow-md p-6 mb-6">
+                <div className="flex flex-col md:flex-row gap-4">
+                  <div className="flex-1 relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                    <input type="text" placeholder={activeTab === 'fornecedores' ? 'Buscar por código, nome, apelido ou produtos...' : 'Buscar por código ou nome do produto...'} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-lg focus:border-green-500 focus:outline-none transition-colors" />
+                  </div>
+                  <button onClick={() => handleOpenModal()} className="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-3 rounded-lg font-semibold flex items-center gap-2 hover:from-green-700 hover:to-emerald-700 transition-all shadow-md hover:shadow-lg">
+                    <Plus className="w-5 h-5" />
+                    {activeTab === 'fornecedores' ? 'Novo Fornecedor' : 'Novo Produto'}
+                  </button>
+                </div>
+              </div>
+
+              {activeTab === 'fornecedores' && (
+                <div className="bg-white rounded-xl shadow-md overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-gradient-to-r from-green-600 to-emerald-600 text-white">
+                        <tr>
+                          <th className="px-6 py-4 text-left text-sm font-semibold">Código</th>
+                          <th className="px-6 py-4 text-left text-sm font-semibold">Nome</th>
+                          <th className="px-6 py-4 text-left text-sm font-semibold">Apelido</th>
+                          <th className="px-6 py-4 text-left text-sm font-semibold">Produtos</th>
+                          <th className="px-6 py-4 text-center text-sm font-semibold">Ações</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {filteredFornecedores.map((fornecedor, index) => (
+                          <tr key={fornecedor.id} className={`hover:bg-green-50 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-2">
+                                <Hash className="w-4 h-4 text-green-600" />
+                                <span className="font-semibold text-green-700">{fornecedor.codigo}</span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className="font-medium text-gray-800">{fornecedor.nome}</span>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-2">
+                                <Tag className="w-4 h-4 text-emerald-600" />
+                                <span className="text-gray-700">{fornecedor.apelido}</span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="flex flex-wrap gap-1">
+                                {(String(fornecedor.produtos || '')).split(',').filter(Boolean).map((produtoNome, idx) => {
+                                  const produto = produtos.find(p => p.nome.toLowerCase() === produtoNome.trim().toLowerCase());
+                                  return (
+                                    <span key={idx} className="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs font-medium">
+                                      {produto ? `${produto.codigo} - ${produto.nome}` : produtoNome.trim()}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="flex justify-center gap-2">
+                                <button onClick={() => handleOpenModal(fornecedor)} className="p-2 bg-blue-100 text-blue-600 rounded-lg hover:bg-blue-200 transition-colors" title="Editar">
+                                  <Edit2 className="w-4 h-4" />
+                                </button>
+                                <button onClick={() => handleDelete(fornecedor.id)} className="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-colors" title="Excluir">
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {filteredFornecedores.length === 0 && (
+                      <div className="text-center py-12 text-gray-500">
+                        <User className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                        <p>Nenhum fornecedor encontrado</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'produtos' && (
+                <div className="bg-white rounded-xl shadow-md overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-gradient-to-r from-green-600 to-emerald-600 text-white">
+                        <tr>
+                          <th className="px-6 py-4 text-left text-sm font-semibold">Código</th>
+                          <th className="px-6 py-4 text-left text-sm font-semibold">Nome do Produto</th>
+                          <th className="px-6 py-4 text-center text-sm font-semibold">Ações</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {filteredProdutos.map((produto, index) => (
+                          <tr key={produto.id} className={`hover:bg-green-50 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-2">
+                                <Hash className="w-4 h-4 text-green-600" />
+                                <span className="font-semibold text-green-700">{produto.codigo}</span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className="font-medium text-gray-800">{produto.nome}</span>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="flex justify-center gap-2">
+                                <button onClick={() => handleOpenModal(produto)} className="p-2 bg-blue-100 text-blue-600 rounded-lg hover:bg-blue-200 transition-colors" title="Editar">
+                                  <Edit2 className="w-4 h-4" />
+                                </button>
+                                <button onClick={() => handleDelete(produto.id)} className="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-colors" title="Excluir">
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {filteredProdutos.length === 0 && (
+                      <div className="text-center py-12 text-gray-500">
+                        <Package className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                        <p>Nenhum produto encontrado</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {showModal && activeTab === 'fornecedores' && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
+                  <div className="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-4 rounded-t-2xl flex justify-between items-center">
+                    <h2 className="text-xl font-bold">{editingId ? 'Editar Fornecedor' : 'Novo Fornecedor'}</h2>
+                    <button onClick={handleCloseModal} className="hover:bg-white hover:bg-opacity-20 rounded-lg p-1">
+                      <X className="w-6 h-6" />
+                    </button>
+                  </div>
+                  <div className="p-6 space-y-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Código *</label>
+                      <input type="text" value={formData.codigo} onChange={(e) => setFormData({ ...formData, codigo: e.target.value })} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-green-500 focus:outline-none" placeholder="Ex: 001" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Nome Completo *</label>
+                      <input type="text" value={formData.nome} onChange={(e) => setFormData({ ...formData, nome: e.target.value })} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-green-500 focus:outline-none" placeholder="Nome oficial do fornecedor" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Apelido</label>
+                      <input type="text" value={formData.apelido} onChange={(e) => setFormData({ ...formData, apelido: e.target.value })} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-green-500 focus:outline-none" placeholder="Como é conhecido" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Produtos</label>
+                      <div className="mb-2 flex flex-wrap gap-2 min-h-[40px] p-2 border-2 border-gray-200 rounded-lg bg-gray-50">
+                        {selectedProdutos.length === 0 ? (
+                          <span className="text-gray-400 text-sm">Nenhum produto selecionado</span>
+                        ) : (
+                          selectedProdutos.map(produtoId => {
+                            const produto = produtos.find(p => p.id === produtoId);
+                            return produto ? (
+                              <span key={produtoId} className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm font-medium flex items-center gap-2">
+                                {produto.codigo} - {produto.nome}
+                                <button type="button" onClick={() => removeProduto(produtoId)} className="hover:bg-green-200 rounded-full p-0.5">
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </span>
+                            ) : null;
+                          })
+                        )}
+                      </div>
+                      <div className="relative">
+                        <input type="text" value={produtoSearchTerm} onChange={(e) => setProdutoSearchTerm(e.target.value)} onFocus={() => setShowProdutoDropdown(true)} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-green-500 focus:outline-none" placeholder="Buscar produtos..." />
+                        {showProdutoDropdown && (
+                          <div className="absolute z-10 w-full mt-1 bg-white border-2 border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                            {filteredProdutosDropdown.length === 0 ? (
+                              <div className="px-4 py-3 text-gray-500 text-sm">Nenhum produto encontrado</div>
+                            ) : (
+                              filteredProdutosDropdown.map(produto => (
+                                <button key={produto.id} type="button" onClick={() => toggleProduto(produto.id)} className={`w-full px-4 py-2 text-left hover:bg-green-50 transition-colors flex items-center justify-between ${selectedProdutos.includes(produto.id) ? 'bg-green-100' : ''}`}>
+                                  <span className="text-sm">
+                                    <span className="font-semibold text-green-700">{produto.codigo}</span>
+                                    {' - '}
+                                    <span className="text-gray-800">{produto.nome}</span>
+                                  </span>
+                                  {selectedProdutos.includes(produto.id) && (<span className="text-green-600 text-xs font-semibold">✓</span>)}
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex gap-3 pt-4">
+                      <button onClick={handleCloseModal} className="flex-1 px-4 py-2 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 transition-colors">Cancelar</button>
+                      <button onClick={handleSaveFornecedor} className="flex-1 px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg font-semibold hover:from-green-700 hover:to-emerald-700 transition-all shadow-md">Salvar</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {showModal && activeTab === 'produtos' && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
+                  <div className="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-4 rounded-t-2xl flex justify-between items-center">
+                    <h2 className="text-xl font-bold">{editingId ? 'Editar Produto' : 'Novo Produto'}</h2>
+                    <button onClick={handleCloseModal} className="hover:bg-white hover:bg-opacity-20 rounded-lg p-1">
+                      <X className="w-6 h-6" />
+                    </button>
+                  </div>
+                  <div className="p-6 space-y-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Código *</label>
+                      <input type="text" value={produtoFormData.codigo} onChange={(e) => setProdutoFormData({ ...produtoFormData, codigo: e.target.value })} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-green-500 focus:outline-none" placeholder="Ex: P001" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Nome do Produto *</label>
+                      <input type="text" value={produtoFormData.nome} onChange={(e) => setProdutoFormData({ ...produtoFormData, nome: e.target.value })} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-green-500 focus:outline-none" placeholder="Ex: Tomate" />
+                    </div>
+                    <div className="flex gap-3 pt-4">
+                      <button onClick={handleCloseModal} className="flex-1 px-4 py-2 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 transition-colors">Cancelar</button>
+                      <button onClick={handleSaveProduto} className="flex-1 px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg font-semibold hover:from-green-700 hover:to-emerald-700 transition-all shadow-md">Salvar</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(<SistemaFornecedores />);
+    </script>
+  </body>
+</html>
