@@ -2,5 +2,6 @@ node_modules/
 .vercel/
 .env
 *.env
+.dev.vars
 dist.zip
 *.log
