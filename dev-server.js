@@ -6,7 +6,7 @@ const url = require('url');
 const fornecedoresHandler = require('./api/fornecedores.js');
 const produtosHandler = require('./api/produtos.js');
 
-const PORT = 3000;
+const PORT = process.env.PORT || 9563;
 const ROOT = __dirname;
 
 const MIME = {
