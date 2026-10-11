@@ -24,6 +24,7 @@ function formatFornecedor(f, pRows) {
     nome: f.nome,
     apelido: f.apelido,
     status: f.status || 'Ativo',
+    tipo: f.tipo || 'Comum',
     produtos: activeProds.map((p) => p.nome).join(', '),
     produtoIds: activeProds.map((p) => Number(p.id)),
     produtosDetalhes: (pRows || []).map((p) => ({
@@ -170,7 +171,7 @@ async function handleFornecedores(request, env, url) {
       const id = url.searchParams.get('id');
       if (id) {
         const rs = await client.execute({
-          sql: "SELECT id, codigo, nome, apelido, COALESCE(status, 'Ativo') AS status FROM fornecedores WHERE id = ?",
+          sql: "SELECT id, codigo, nome, apelido, COALESCE(status, 'Ativo') AS status, COALESCE(tipo, 'Comum') AS tipo FROM fornecedores WHERE id = ?",
           args: [id],
         });
         if (rs.rows.length === 0) {
@@ -189,7 +190,7 @@ async function handleFornecedores(request, env, url) {
 
         return json(formatFornecedor(fornecedor, jRs.rows));
       } else {
-        const rs = await client.execute("SELECT id, codigo, nome, apelido, COALESCE(status, 'Ativo') AS status FROM fornecedores ORDER BY id");
+        const rs = await client.execute("SELECT id, codigo, nome, apelido, COALESCE(status, 'Ativo') AS status, COALESCE(tipo, 'Comum') AS tipo FROM fornecedores ORDER BY id");
         const fornecedores = rs.rows;
 
         const rels = await client.execute(`
@@ -216,17 +217,18 @@ async function handleFornecedores(request, env, url) {
     }
 
     if (method === 'POST') {
-      const { codigo, nome, apelido, status, produtoIds, produtosStatus } = body || {};
+      const { codigo, nome, apelido, status, tipo, produtoIds, produtosStatus } = body || {};
       if (!codigo || !nome) {
         return json({ error: 'Código e nome são obrigatórios' }, 400);
       }
 
       const fornecedorStatus = status === 'Inativo' ? 'Inativo' : 'Ativo';
+      const fornecedorTipo = tipo === 'NF' ? 'NF' : 'Comum';
 
       const stmts = [
         {
-          sql: 'INSERT INTO fornecedores (codigo, nome, apelido, status) VALUES (?, ?, ?, ?)',
-          args: [codigo, nome, apelido || '', fornecedorStatus],
+          sql: 'INSERT INTO fornecedores (codigo, nome, apelido, status, tipo) VALUES (?, ?, ?, ?, ?)',
+          args: [codigo, nome, apelido || '', fornecedorStatus, fornecedorTipo],
         },
       ];
 
@@ -244,7 +246,7 @@ async function handleFornecedores(request, env, url) {
       }
 
       const fRs = await client.execute({
-        sql: "SELECT id, codigo, nome, apelido, COALESCE(status, 'Ativo') AS status FROM fornecedores WHERE id = ?",
+        sql: "SELECT id, codigo, nome, apelido, COALESCE(status, 'Ativo') AS status, COALESCE(tipo, 'Comum') AS tipo FROM fornecedores WHERE id = ?",
         args: [fornecedorId],
       });
 
@@ -282,7 +284,7 @@ async function handleFornecedores(request, env, url) {
         });
 
         const fRs = await client.execute({
-          sql: "SELECT id, codigo, nome, apelido, COALESCE(status, 'Ativo') AS status FROM fornecedores WHERE id = ?",
+          sql: "SELECT id, codigo, nome, apelido, COALESCE(status, 'Ativo') AS status, COALESCE(tipo, 'Comum') AS tipo FROM fornecedores WHERE id = ?",
           args: [Number(id)],
         });
         const pRs = await client.execute({
@@ -296,28 +298,64 @@ async function handleFornecedores(request, env, url) {
         return json(formatFornecedor(fRs.rows[0], pRs.rows));
       }
 
-      const { codigo, nome, apelido, status, produtoIds, produtosStatus } = body || {};
+      // Atalho para alternar tipo (NF / Comum) do fornecedor
+      const toggleTipo = url.searchParams.get('toggleTipo') || body?.toggleTipo;
+      if (toggleTipo) {
+        const cur = await client.execute({
+          sql: "SELECT COALESCE(tipo, 'Comum') AS tipo FROM fornecedores WHERE id = ?",
+          args: [Number(id)],
+        });
+        const currentTipo = cur.rows[0]?.tipo || 'Comum';
+        const newTipo = (url.searchParams.get('novoTipo') || body?.novoTipo) || (currentTipo === 'NF' ? 'Comum' : 'NF');
+        await client.execute({
+          sql: 'UPDATE fornecedores SET tipo = ? WHERE id = ?',
+          args: [newTipo, Number(id)],
+        });
+
+        const fRs = await client.execute({
+          sql: "SELECT id, codigo, nome, apelido, COALESCE(status, 'Ativo') AS status, COALESCE(tipo, 'Comum') AS tipo FROM fornecedores WHERE id = ?",
+          args: [Number(id)],
+        });
+        const pRs = await client.execute({
+          sql: `SELECT p.id, p.codigo, p.nome, COALESCE(fp.status, 'Ativo') AS status 
+                FROM fornecedor_produto fp 
+                JOIN produtos p ON p.id = fp.produto_id 
+                WHERE fp.fornecedor_id = ?
+                ORDER BY p.nome`,
+          args: [Number(id)],
+        });
+        return json(formatFornecedor(fRs.rows[0], pRs.rows));
+      }
+
+      const { codigo, nome, apelido, status, tipo, produtoIds, produtosStatus } = body || {};
       if (!codigo || !nome) {
         return json({ error: 'Código e nome são obrigatórios' }, 400);
       }
       const fornecedorStatus = status === 'Inativo' ? 'Inativo' : 'Ativo';
 
+      const curF = await client.execute({
+        sql: "SELECT COALESCE(tipo, 'Comum') AS tipo FROM fornecedores WHERE id = ?",
+        args: [Number(id)],
+      });
+      const existingTipo = curF.rows[0]?.tipo || 'Comum';
+      const fornecedorTipo = (tipo === undefined) ? existingTipo : (tipo === 'NF' ? 'NF' : 'Comum');
+
       // Manter status anterior dos produtos caso produtosStatus não venha completo
       const existingRels = await client.execute({
         sql: "SELECT produto_id, COALESCE(status, 'Ativo') AS status FROM fornecedor_produto WHERE fornecedor_id = ?",
-        args: [id],
+        args: [Number(id)],
       });
       const existingStatusMap = {};
       existingRels.rows.forEach((r) => { existingStatusMap[r.produto_id] = r.status; });
 
       const stmts = [
         {
-          sql: 'UPDATE fornecedores SET codigo = ?, nome = ?, apelido = ?, status = ? WHERE id = ?',
-          args: [codigo, nome, apelido || '', fornecedorStatus, id],
+          sql: 'UPDATE fornecedores SET codigo = ?, nome = ?, apelido = ?, status = ?, tipo = ? WHERE id = ?',
+          args: [codigo, nome, apelido || '', fornecedorStatus, fornecedorTipo, Number(id)],
         },
         {
           sql: 'DELETE FROM fornecedor_produto WHERE fornecedor_id = ?',
-          args: [id],
+          args: [Number(id)],
         },
       ];
 
@@ -334,7 +372,7 @@ async function handleFornecedores(request, env, url) {
       await client.batch(stmts, 'write');
 
       const fRs = await client.execute({
-        sql: "SELECT id, codigo, nome, apelido, COALESCE(status, 'Ativo') AS status FROM fornecedores WHERE id = ?",
+        sql: "SELECT id, codigo, nome, apelido, COALESCE(status, 'Ativo') AS status, COALESCE(tipo, 'Comum') AS tipo FROM fornecedores WHERE id = ?",
         args: [id],
       });
 

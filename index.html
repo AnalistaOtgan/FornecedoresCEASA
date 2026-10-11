@@ -357,6 +357,107 @@ a {
   box-shadow: inset 4px 0 0 #ffffff;
 }
 
+/* Linha de Fornecedor Tipo NF: Fundo amarelo e texto em preto */
+.r.tipo-nf:not(.inativo) {
+  background: var(--yellow);
+  color: #1b1b1a;
+  border-bottom-color: rgba(27, 27, 26, 0.35);
+}
+.r.tipo-nf:not(.inativo) .id,
+.r.tipo-nf:not(.inativo) .nm,
+.r.tipo-nf:not(.inativo) .ap,
+.r.tipo-nf:not(.inativo) .pr,
+.r.tipo-nf:not(.inativo) .q {
+  color: #1b1b1a;
+}
+.r.tipo-nf:not(.inativo) .id {
+  color: #1b1b1a;
+  font-weight: 800;
+}
+.r.tipo-nf:not(.inativo) .ap {
+  color: rgba(27, 27, 26, 0.85);
+}
+.r.tipo-nf:not(.inativo) .pr {
+  color: rgba(27, 27, 26, 0.85);
+}
+.r.tipo-nf:not(.inativo) .q {
+  color: #1b1b1a;
+  font-weight: 800;
+}
+.r.tipo-nf:not(.inativo):hover:not(.on) {
+  background: #e5bc32;
+}
+.r.tipo-nf:not(.inativo).on {
+  background: #dbb32b;
+  box-shadow: inset 4px 0 0 #1b1b1a;
+}
+
+[data-theme="dark"] .r.tipo-nf:not(.inativo) {
+  background: #f1c73b;
+  color: #1b1b1a;
+  border-bottom-color: rgba(0, 0, 0, 0.45);
+}
+[data-theme="dark"] .r.tipo-nf:not(.inativo) .id,
+[data-theme="dark"] .r.tipo-nf:not(.inativo) .nm,
+[data-theme="dark"] .r.tipo-nf:not(.inativo) .ap,
+[data-theme="dark"] .r.tipo-nf:not(.inativo) .pr,
+[data-theme="dark"] .r.tipo-nf:not(.inativo) .q {
+  color: #1b1b1a;
+}
+[data-theme="dark"] .r.tipo-nf:not(.inativo):hover:not(.on) {
+  background: #e5bc32;
+}
+[data-theme="dark"] .r.tipo-nf:not(.inativo).on {
+  background: #dbb32b;
+  box-shadow: inset 4px 0 0 #1b1b1a;
+}
+
+.tag-nf {
+  display: inline-block;
+  background: #1b1b1a;
+  color: #f1c73b;
+  font-size: 9px;
+  font-weight: 800;
+  padding: 1px 5px;
+  margin-left: 8px;
+  letter-spacing: .06em;
+  vertical-align: middle;
+  border-radius: 2px;
+}
+.r.inativo .tag-nf {
+  background: #ffffff;
+  color: var(--red);
+}
+
+.status-badge.nf-badge {
+  background: var(--yellow);
+  color: #1b1b1a;
+  border: 1px solid #1b1b1a;
+  font-weight: 800;
+}
+.status-badge.padrao-badge {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border-subtle);
+}
+
+.status-btn.nf-selected {
+  background: var(--yellow);
+  color: #1b1b1a;
+  border-color: #1b1b1a;
+  font-weight: 800;
+}
+.status-btn.comum-selected {
+  background: #1b1b1a;
+  color: #ffffff;
+  border-color: #1b1b1a;
+}
+[data-theme="dark"] .status-btn.comum-selected {
+  background: #ffffff;
+  color: #1b1b1a;
+  border-color: #ffffff;
+}
+
 /* Badges e Botões de Status */
 .status-badge {
   display: inline-flex;
@@ -767,7 +868,7 @@ function SistemaFornecedoresCEASA() {
   const [confirmModal, setConfirmModal] = useState(null);
 
   // Formulário de Fornecedor
-  const [formData, setFormData] = useState({ codigo: '', nome: '', apelido: '', status: 'Ativo' });
+  const [formData, setFormData] = useState({ codigo: '', nome: '', apelido: '', status: 'Ativo', tipo: 'Comum' });
   const [selectedProdutos, setSelectedProdutos] = useState([]);
   const [produtoSearchTerm, setProdutoSearchTerm] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
@@ -881,6 +982,10 @@ function SistemaFornecedoresCEASA() {
     return fornecedores.filter(f => f.status === 'Inativo').length;
   }, [fornecedores]);
 
+  const nfCount = useMemo(() => {
+    return fornecedores.filter(f => f.tipo === 'NF').length;
+  }, [fornecedores]);
+
   // Fornecedores Filtrados
   const filteredFornecedores = useMemo(() => {
     let list = fornecedores;
@@ -888,6 +993,8 @@ function SistemaFornecedoresCEASA() {
       list = list.filter(f => (f.status || 'Ativo') !== 'Inativo');
     } else if (subFilter === 'inativos') {
       list = list.filter(f => f.status === 'Inativo');
+    } else if (subFilter === 'nf') {
+      list = list.filter(f => f.tipo === 'NF');
     } else if (subFilter === 'sem_vinculo') {
       list = list.filter(f => {
         const pIds = Array.isArray(f.produtoIds) ? f.produtoIds : [];
@@ -902,7 +1009,9 @@ function SistemaFornecedoresCEASA() {
       norm(f.nome).includes(q) ||
       norm(f.apelido).includes(q) ||
       norm(f.produtos).includes(q) ||
-      norm(f.status || 'Ativo').includes(q)
+      norm(f.status || 'Ativo').includes(q) ||
+      norm(f.tipo || 'Comum').includes(q) ||
+      (q === 'nf' && f.tipo === 'NF')
     );
   }, [fornecedores, subFilter, searchTerm]);
 
@@ -985,12 +1094,13 @@ function SistemaFornecedoresCEASA() {
   // Exportar CSV
   const handleExportCSV = () => {
     if (activeTab === 'fornecedores') {
-      const headers = ['Código', 'Nome', 'Apelido', 'Status', 'Produtos'];
+      const headers = ['Código', 'Nome', 'Apelido', 'Status', 'Tipo', 'Produtos'];
       const rows = filteredFornecedores.map(f => [
         `"${f.codigo || ''}"`,
         `"${(f.nome || '').replace(/"/g, '""')}"`,
         `"${(f.apelido || '').replace(/"/g, '""')}"`,
         `"${f.status || 'Ativo'}"`,
+        `"${f.tipo || 'Comum'}"`,
         `"${(f.produtos || '').replace(/"/g, '""')}"`
       ]);
       const csv = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
@@ -1031,7 +1141,8 @@ function SistemaFornecedoresCEASA() {
           codigo: item.codigo || '',
           nome: item.nome || '',
           apelido: item.apelido || '',
-          status: item.status || 'Ativo'
+          status: item.status || 'Ativo',
+          tipo: item.tipo || 'Comum'
         });
         if (Array.isArray(item.produtosDetalhes) && item.produtosDetalhes.length > 0) {
           setSelectedProdutos(item.produtosDetalhes.map(p => p.id));
@@ -1046,7 +1157,7 @@ function SistemaFornecedoresCEASA() {
         }
       } else {
         setEditingId(null);
-        setFormData({ codigo: '', nome: '', apelido: '', status: 'Ativo' });
+        setFormData({ codigo: '', nome: '', apelido: '', status: 'Ativo', tipo: 'Comum' });
         setSelectedProdutos([]);
       }
     } else {
@@ -1066,7 +1177,7 @@ function SistemaFornecedoresCEASA() {
   const handleCloseModal = () => {
     setShowModal(false);
     setEditingId(null);
-    setFormData({ codigo: '', nome: '', apelido: '', status: 'Ativo' });
+    setFormData({ codigo: '', nome: '', apelido: '', status: 'Ativo', tipo: 'Comum' });
     setProdutoFormData({ codigo: '', nome: '' });
     setSelectedProdutos([]);
     setShowDropdown(false);
@@ -1082,6 +1193,7 @@ function SistemaFornecedoresCEASA() {
       nome: formData.nome,
       apelido: formData.apelido,
       status: formData.status || 'Ativo',
+      tipo: formData.tipo || 'Comum',
       produtoIds: selectedProdutos
     };
     try {
@@ -1122,6 +1234,7 @@ function SistemaFornecedoresCEASA() {
       nome: fornecedor.nome,
       apelido: fornecedor.apelido,
       status: newStatus,
+      tipo: fornecedor.tipo || 'Comum',
       produtoIds: allProdIds
     };
     try {
@@ -1135,6 +1248,30 @@ function SistemaFornecedoresCEASA() {
       notify(`Status alterado para ${newStatus}.`);
     } catch {
       notify('Erro ao alterar status.');
+    }
+  };
+
+  const handleToggleTipo = async (fornecedor) => {
+    const newTipo = fornecedor.tipo === 'NF' ? 'Comum' : 'NF';
+    // Otimização visual imediata
+    setFornecedores(prev => prev.map(item => item.id === fornecedor.id ? { ...item, tipo: newTipo } : item));
+    try {
+      const res = await fetch(`${API_BASE}/fornecedores?id=${fornecedor.id}&toggleTipo=1&novoTipo=${newTipo}&_method=PUT`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ toggleTipo: true, novoTipo: newTipo })
+      });
+      if (res.ok) {
+        const saved = await res.json();
+        setFornecedores(prev => prev.map(item => item.id === fornecedor.id ? saved : item));
+        notify(`Fornecedor ${newTipo === 'NF' ? 'marcado como NF' : 'definido como Padrão'}.`);
+      } else {
+        notify('Erro ao atualizar tipo do fornecedor.');
+        loadData(true);
+      }
+    } catch {
+      notify('Erro ao sincronizar com servidor.');
+      loadData(true);
     }
   };
 
@@ -1320,6 +1457,15 @@ function SistemaFornecedoresCEASA() {
                   <span>Inativos</span>
                   <span>{inativosCount}</span>
                 </a>
+
+                <a
+                  className={`nv ${subFilter === 'nf' ? 'on' : ''}`}
+                  href="#"
+                  onClick={(e) => { e.preventDefault(); setSubFilter('nf'); }}
+                >
+                  <span>Emitem NF</span>
+                  <span>{nfCount}</span>
+                </a>
               </>
             )}
 
@@ -1434,11 +1580,12 @@ function SistemaFornecedoresCEASA() {
               }
               const isSelected = selectedId === f.id;
               const isInativo = f.status === 'Inativo';
+              const isNF = f.tipo === 'NF';
 
               return (
                 <div
                   key={f.id}
-                  className={`r ${isSelected ? 'on' : ''} ${isInativo ? 'inativo' : ''}`}
+                  className={`r ${isSelected ? 'on' : ''} ${isInativo ? 'inativo' : ''} ${isNF ? 'tipo-nf' : ''}`}
                   onClick={() => setSelectedId(f.id)}
                 >
                   <span className="id">#{f.codigo}</span>
@@ -1446,6 +1593,7 @@ function SistemaFornecedoresCEASA() {
                     <div className="c nm">
                       {f.nome}
                       {f.apelido && <span className="ap">{f.apelido}</span>}
+                      {isNF && <span className="tag-nf">NF</span>}
                       {isInativo && <span className="status-tag-inativo">INATIVO</span>}
                     </div>
                     <div className="pr">
@@ -1524,23 +1672,38 @@ function SistemaFornecedoresCEASA() {
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span className="id">#{selectedItemData.data.codigo}</span>
-                  <span className={`status-badge ${(selectedItemData.data.status || 'Ativo') === 'Inativo' ? 'inativo' : 'ativo'}`}>
-                    {(selectedItemData.data.status || 'Ativo') === 'Inativo' ? '● Inativo' : '● Ativo'}
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span className={`status-badge ${selectedItemData.data.tipo === 'NF' ? 'nf-badge' : 'padrao-badge'}`}>
+                      {selectedItemData.data.tipo === 'NF' ? '★ Emite NF' : 'Padrão (Sem NF)'}
+                    </span>
+                    <span className={`status-badge ${(selectedItemData.data.status || 'Ativo') === 'Inativo' ? 'inativo' : 'ativo'}`}>
+                      {(selectedItemData.data.status || 'Ativo') === 'Inativo' ? '● Inativo' : '● Ativo'}
+                    </span>
+                  </div>
                 </div>
                 <h2 className="c aside-title">{selectedItemData.data.nome}</h2>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
                   <span className="k" style={{ color: 'var(--muted)' }}>
                     Apelido: {selectedItemData.data.apelido || '—'}
                   </span>
-                  <button
-                    type="button"
-                    className="l"
-                    style={{ fontSize: '11px', textTransform: 'uppercase' }}
-                    onClick={() => handleToggleStatus(selectedItemData.data)}
-                  >
-                    Marcar {(selectedItemData.data.status || 'Ativo') === 'Inativo' ? 'Ativo' : 'Inativo'}
-                  </button>
+                  <div style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
+                    <button
+                      type="button"
+                      className="l"
+                      style={{ fontSize: '11px', textTransform: 'uppercase' }}
+                      onClick={() => handleToggleTipo(selectedItemData.data)}
+                    >
+                      {selectedItemData.data.tipo === 'NF' ? 'Remover NF' : 'Tornar NF'}
+                    </button>
+                    <button
+                      type="button"
+                      className="l"
+                      style={{ fontSize: '11px', textTransform: 'uppercase' }}
+                      onClick={() => handleToggleStatus(selectedItemData.data)}
+                    >
+                      Marcar {(selectedItemData.data.status || 'Ativo') === 'Inativo' ? 'Ativo' : 'Inativo'}
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -1729,6 +1892,26 @@ function SistemaFornecedoresCEASA() {
                   className={`status-btn ${formData.status === 'Inativo' ? 'inativo-selected' : ''}`}
                 >
                   ● Inativo
+                </button>
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Tipo de Fornecedor / Faturamento</label>
+              <div style={{ display: 'flex', gap: '12px', marginTop: '6px' }}>
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, tipo: 'Comum' })}
+                  className={`status-btn ${(formData.tipo || 'Comum') !== 'NF' ? 'comum-selected' : ''}`}
+                >
+                  Padrão (Sem NF)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, tipo: 'NF' })}
+                  className={`status-btn ${formData.tipo === 'NF' ? 'nf-selected' : ''}`}
+                >
+                  ★ Emite Nota Fiscal (NF)
                 </button>
               </div>
             </div>
