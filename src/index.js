@@ -16,6 +16,25 @@ function json(data, status = 200) {
   });
 }
 
+function formatFornecedor(f, pRows) {
+  const activeProds = (pRows || []).filter((p) => (p.status || 'Ativo') !== 'Inativo');
+  return {
+    id: f.id,
+    codigo: f.codigo,
+    nome: f.nome,
+    apelido: f.apelido,
+    status: f.status || 'Ativo',
+    produtos: activeProds.map((p) => p.nome).join(', '),
+    produtoIds: activeProds.map((p) => Number(p.id)),
+    produtosDetalhes: (pRows || []).map((p) => ({
+      id: Number(p.id),
+      codigo: p.codigo,
+      nome: p.nome,
+      status: p.status || 'Ativo',
+    })),
+  };
+}
+
 function getDb(env) {
   const rawUrl = env.TURSO_DATABASE_URL || '';
   const url = rawUrl.replace(/^["']|["']$/g, '');
@@ -31,7 +50,14 @@ function getDb(env) {
 
 async function parseBody(request) {
   try {
-    return await request.json();
+    if (typeof request.text === 'function') {
+      const text = await request.text();
+      return text && text.trim() ? JSON.parse(text) : {};
+    }
+    if (typeof request.json === 'function') {
+      return await request.json();
+    }
+    return {};
   } catch {
     return {};
   }
@@ -153,61 +179,44 @@ async function handleFornecedores(request, env, url) {
 
         const fornecedor = rs.rows[0];
         const jRs = await client.execute({
-          sql: `SELECT p.id, p.codigo, p.nome 
+          sql: `SELECT p.id, p.codigo, p.nome, COALESCE(fp.status, 'Ativo') AS status 
                 FROM fornecedor_produto fp 
                 JOIN produtos p ON p.id = fp.produto_id 
-                WHERE fp.fornecedor_id = ?`,
+                WHERE fp.fornecedor_id = ?
+                ORDER BY p.nome`,
           args: [id],
         });
 
-        fornecedor.produtos = jRs.rows.map((p) => p.nome).join(', ');
-        fornecedor.produtoIds = jRs.rows.map((p) => Number(p.id));
-
-        return json(fornecedor);
+        return json(formatFornecedor(fornecedor, jRs.rows));
       } else {
-        const rs = await client.execute(`
-          SELECT f.id, f.codigo, f.nome, f.apelido, COALESCE(f.status, 'Ativo') AS status, p.id AS p_id, p.codigo AS p_codigo, p.nome AS p_nome
-          FROM fornecedores f
-          LEFT JOIN fornecedor_produto fp ON fp.fornecedor_id = f.id
-          LEFT JOIN produtos p ON p.id = fp.produto_id
-          ORDER BY f.id, p.id
-        `);
+        const rs = await client.execute("SELECT id, codigo, nome, apelido, COALESCE(status, 'Ativo') AS status FROM fornecedores ORDER BY id");
+        const fornecedores = rs.rows;
 
-        const map = new Map();
-        for (const row of rs.rows) {
-          if (!map.has(row.id)) {
-            map.set(row.id, {
-              id: row.id,
-              codigo: row.codigo,
-              nome: row.nome,
-              apelido: row.apelido,
-              status: row.status || 'Ativo',
-              produtoList: [],
-              produtoIdList: [],
-            });
+        const rels = await client.execute(`
+          SELECT fp.fornecedor_id, p.id, p.codigo, p.nome, COALESCE(fp.status, 'Ativo') AS status
+          FROM fornecedor_produto fp
+          JOIN produtos p ON p.id = fp.produto_id
+          ORDER BY p.nome
+        `);
+        const mapByFornecedor = new Map();
+        for (const rel of rels.rows) {
+          if (!mapByFornecedor.has(rel.fornecedor_id)) {
+            mapByFornecedor.set(rel.fornecedor_id, []);
           }
-          if (row.p_id) {
-            map.get(row.id).produtoList.push(row.p_nome);
-            map.get(row.id).produtoIdList.push(Number(row.p_id));
-          }
+          mapByFornecedor.get(rel.fornecedor_id).push(rel);
         }
 
-        const fornecedores = Array.from(map.values()).map((f) => ({
-          id: f.id,
-          codigo: f.codigo,
-          nome: f.nome,
-          apelido: f.apelido,
-          status: f.status || 'Ativo',
-          produtos: f.produtoList.join(', '),
-          produtoIds: f.produtoIdList,
-        }));
+        const formatted = fornecedores.map((f) => {
+          const prods = mapByFornecedor.get(f.id) || [];
+          return formatFornecedor(f, prods);
+        });
 
-        return json(fornecedores);
+        return json(formatted);
       }
     }
 
     if (method === 'POST') {
-      const { codigo, nome, apelido, status, produtoIds } = body || {};
+      const { codigo, nome, apelido, status, produtoIds, produtosStatus } = body || {};
       if (!codigo || !nome) {
         return json({ error: 'Código e nome são obrigatórios' }, 400);
       }
@@ -225,10 +234,11 @@ async function handleFornecedores(request, env, url) {
       const fornecedorId = results[0].lastInsertRowid;
 
       const ids = Array.isArray(produtoIds) ? produtoIds : [];
+      const prodStatusMap = produtosStatus || {};
       if (ids.length > 0) {
         const insertRelStmts = ids.map((pid) => ({
-          sql: 'INSERT INTO fornecedor_produto (fornecedor_id, produto_id) VALUES (?, ?)',
-          args: [fornecedorId, Number(pid)],
+          sql: 'INSERT INTO fornecedor_produto (fornecedor_id, produto_id, status) VALUES (?, ?, ?)',
+          args: [fornecedorId, Number(pid), prodStatusMap[pid] === 'Inativo' ? 'Inativo' : 'Ativo'],
         }));
         await client.batch(insertRelStmts, 'write');
       }
@@ -237,27 +247,68 @@ async function handleFornecedores(request, env, url) {
         sql: "SELECT id, codigo, nome, apelido, COALESCE(status, 'Ativo') AS status FROM fornecedores WHERE id = ?",
         args: [fornecedorId],
       });
-      const f = fRs.rows[0];
 
       const pRs = await client.execute({
-        sql: `SELECT p.id, p.codigo, p.nome 
+        sql: `SELECT p.id, p.codigo, p.nome, COALESCE(fp.status, 'Ativo') AS status 
               FROM fornecedor_produto fp 
               JOIN produtos p ON p.id = fp.produto_id 
-              WHERE fp.fornecedor_id = ?`,
+              WHERE fp.fornecedor_id = ?
+              ORDER BY p.nome`,
         args: [fornecedorId],
       });
-      f.produtos = pRs.rows.map((p) => p.nome).join(', ');
-      f.produtoIds = pRs.rows.map((p) => Number(p.id));
 
-      return json(f, 201);
+      return json(formatFornecedor(fRs.rows[0], pRs.rows), 201);
     }
 
     if (method === 'PUT') {
       const id = url.searchParams.get('id');
-      const { codigo, nome, apelido, status, produtoIds } = body || {};
       if (!id || id <= 0) return json({ error: 'ID inválido' }, 400);
 
+      const toggleProdutoId = url.searchParams.get('toggleProdutoId') || body?.toggleProdutoId;
+      const novoStatusParam = url.searchParams.get('novoStatus') || body?.novoStatus;
+
+      // Atalho para alternar status de produto específico para este fornecedor
+      if (toggleProdutoId) {
+        const pid = Number(toggleProdutoId);
+        const cur = await client.execute({
+          sql: "SELECT COALESCE(status, 'Ativo') AS status FROM fornecedor_produto WHERE fornecedor_id = ? AND produto_id = ?",
+          args: [Number(id), pid],
+        });
+        const currentStatus = cur.rows[0]?.status || 'Ativo';
+        const newStatus = novoStatusParam || (currentStatus === 'Inativo' ? 'Ativo' : 'Inativo');
+        await client.execute({
+          sql: 'UPDATE fornecedor_produto SET status = ? WHERE fornecedor_id = ? AND produto_id = ?',
+          args: [newStatus, Number(id), pid],
+        });
+
+        const fRs = await client.execute({
+          sql: "SELECT id, codigo, nome, apelido, COALESCE(status, 'Ativo') AS status FROM fornecedores WHERE id = ?",
+          args: [Number(id)],
+        });
+        const pRs = await client.execute({
+          sql: `SELECT p.id, p.codigo, p.nome, COALESCE(fp.status, 'Ativo') AS status 
+                FROM fornecedor_produto fp 
+                JOIN produtos p ON p.id = fp.produto_id 
+                WHERE fp.fornecedor_id = ?
+                ORDER BY p.nome`,
+          args: [Number(id)],
+        });
+        return json(formatFornecedor(fRs.rows[0], pRs.rows));
+      }
+
+      const { codigo, nome, apelido, status, produtoIds, produtosStatus } = body || {};
+      if (!codigo || !nome) {
+        return json({ error: 'Código e nome são obrigatórios' }, 400);
+      }
       const fornecedorStatus = status === 'Inativo' ? 'Inativo' : 'Ativo';
+
+      // Manter status anterior dos produtos caso produtosStatus não venha completo
+      const existingRels = await client.execute({
+        sql: "SELECT produto_id, COALESCE(status, 'Ativo') AS status FROM fornecedor_produto WHERE fornecedor_id = ?",
+        args: [id],
+      });
+      const existingStatusMap = {};
+      existingRels.rows.forEach((r) => { existingStatusMap[r.produto_id] = r.status; });
 
       const stmts = [
         {
@@ -271,10 +322,12 @@ async function handleFornecedores(request, env, url) {
       ];
 
       const ids = Array.isArray(produtoIds) ? produtoIds : [];
+      const prodStatusMap = produtosStatus || existingStatusMap;
       ids.forEach((pid) => {
+        const itemStatus = prodStatusMap[pid] === 'Inativo' ? 'Inativo' : 'Ativo';
         stmts.push({
-          sql: 'INSERT INTO fornecedor_produto (fornecedor_id, produto_id) VALUES (?, ?)',
-          args: [id, Number(pid)],
+          sql: 'INSERT INTO fornecedor_produto (fornecedor_id, produto_id, status) VALUES (?, ?, ?)',
+          args: [id, Number(pid), itemStatus],
         });
       });
 
@@ -284,19 +337,17 @@ async function handleFornecedores(request, env, url) {
         sql: "SELECT id, codigo, nome, apelido, COALESCE(status, 'Ativo') AS status FROM fornecedores WHERE id = ?",
         args: [id],
       });
-      const f = fRs.rows[0];
 
       const pRs = await client.execute({
-        sql: `SELECT p.id, p.codigo, p.nome 
+        sql: `SELECT p.id, p.codigo, p.nome, COALESCE(fp.status, 'Ativo') AS status 
               FROM fornecedor_produto fp 
               JOIN produtos p ON p.id = fp.produto_id 
-              WHERE fp.fornecedor_id = ?`,
+              WHERE fp.fornecedor_id = ?
+              ORDER BY p.nome`,
         args: [id],
       });
-      f.produtos = pRs.rows.map((p) => p.nome).join(', ');
-      f.produtoIds = pRs.rows.map((p) => Number(p.id));
 
-      return json(f);
+      return json(formatFornecedor(fRs.rows[0], pRs.rows));
     }
 
     if (method === 'DELETE') {

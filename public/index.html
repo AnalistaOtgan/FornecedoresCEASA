@@ -473,13 +473,65 @@ a {
 
 .pl {
   display: grid;
-  grid-template-columns: 60px 1fr 28px;
+  grid-template-columns: 56px 1fr 34px auto;
   gap: 8px;
-  padding: 8px 0;
+  align-items: center;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--border-subtle);
   font-size: 13px;
   font-weight: 600;
   text-transform: uppercase;
+  transition: background 0.12s ease;
+  border-radius: 2px;
+}
+.pl.inativo {
+  background: var(--red);
+  color: #ffffff;
+  border-bottom-color: rgba(255, 255, 255, 0.22);
+}
+.pl.inativo .id,
+.pl.inativo span {
+  color: #ffffff !important;
+}
+.pl.inativo .status-tag-inativo {
+  color: var(--red) !important;
+  background: #ffffff !important;
+}
+.pl.inativo .unit-col {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+.pl .item-toggle-btn {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  border-radius: 2px;
+  transition: all 0.12s ease;
+}
+.pl:not(.inativo) .item-toggle-btn {
+  opacity: 0.65;
+}
+.pl:not(.inativo):hover .item-toggle-btn {
+  opacity: 1;
+}
+.pl:not(.inativo) .item-toggle-btn:hover {
+  background: var(--red);
+  color: #ffffff;
+  border-color: var(--red);
+}
+.pl.inativo .item-toggle-btn {
+  background: #ffffff;
+  color: var(--red);
+  border-color: #ffffff;
+  opacity: 1;
+}
+.pl.inativo .item-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.85);
 }
 
 /* Notificação discreta */
@@ -893,11 +945,21 @@ function SistemaFornecedoresCEASA() {
     if (activeTab === 'fornecedores') {
       const f = fornecedores.find(item => item.id === selectedId);
       if (!f) return null;
-      const rawProds = (String(f.produtos || '')).split(',').filter(Boolean).map(s => s.trim());
-      const prodObjList = rawProds.map(pName => {
-        const found = produtos.find(prod => (prod.nome || '').toLowerCase() === pName.toLowerCase());
-        return found ? { codigo: found.codigo, nome: found.nome } : { codigo: '', nome: pName };
-      });
+      let prodObjList = [];
+      if (Array.isArray(f.produtosDetalhes) && f.produtosDetalhes.length > 0) {
+        prodObjList = f.produtosDetalhes.map(pd => ({
+          id: pd.id,
+          codigo: pd.codigo || '',
+          nome: pd.nome || '',
+          status: pd.status || 'Ativo'
+        }));
+      } else {
+        const rawProds = (String(f.produtos || '')).split(',').filter(Boolean).map(s => s.trim());
+        prodObjList = rawProds.map(pName => {
+          const found = produtos.find(prod => (prod.nome || '').toLowerCase() === pName.toLowerCase());
+          return found ? { id: found.id, codigo: found.codigo, nome: found.nome, status: 'Ativo' } : { id: null, codigo: '', nome: pName, status: 'Ativo' };
+        });
+      }
       return { type: 'fornecedor', data: f, productList: prodObjList };
     } else {
       const p = produtos.find(item => item.id === selectedId);
@@ -971,7 +1033,9 @@ function SistemaFornecedoresCEASA() {
           apelido: item.apelido || '',
           status: item.status || 'Ativo'
         });
-        if (Array.isArray(item.produtoIds)) {
+        if (Array.isArray(item.produtosDetalhes) && item.produtosDetalhes.length > 0) {
+          setSelectedProdutos(item.produtosDetalhes.map(p => p.id));
+        } else if (Array.isArray(item.produtoIds)) {
           setSelectedProdutos(item.produtoIds);
         } else {
           const arr = (item.produtos || '').split(',').map(p => p.trim()).map(n => {
@@ -1050,12 +1114,15 @@ function SistemaFornecedoresCEASA() {
 
   const handleToggleStatus = async (fornecedor) => {
     const newStatus = fornecedor.status === 'Inativo' ? 'Ativo' : 'Inativo';
+    const allProdIds = Array.isArray(fornecedor.produtosDetalhes) && fornecedor.produtosDetalhes.length > 0
+      ? fornecedor.produtosDetalhes.map(p => p.id)
+      : (fornecedor.produtoIds || []);
     const payload = {
       codigo: fornecedor.codigo,
       nome: fornecedor.nome,
       apelido: fornecedor.apelido,
       status: newStatus,
-      produtoIds: fornecedor.produtoIds || []
+      produtoIds: allProdIds
     };
     try {
       const res = await fetch(`${API_BASE}/fornecedores?id=${fornecedor.id}&_method=PUT`, {
@@ -1068,6 +1135,48 @@ function SistemaFornecedoresCEASA() {
       notify(`Status alterado para ${newStatus}.`);
     } catch {
       notify('Erro ao alterar status.');
+    }
+  };
+
+  const handleToggleProdutoStatus = async (fornecedorId, produtoId) => {
+    const f = fornecedores.find(x => x.id === fornecedorId);
+    if (!f) return;
+    const currentPd = (f.produtosDetalhes || []).find(pd => pd.id === produtoId);
+    const novoStatus = (currentPd && currentPd.status === 'Inativo') ? 'Ativo' : 'Inativo';
+
+    // Otimização visual imediata
+    setFornecedores(prev => prev.map(item => {
+      if (item.id !== fornecedorId) return item;
+      const updatedDetalhes = (item.produtosDetalhes || []).map(pd => {
+        if (pd.id === produtoId) return { ...pd, status: novoStatus };
+        return pd;
+      });
+      const activeDetalhes = updatedDetalhes.filter(pd => (pd.status || 'Ativo') !== 'Inativo');
+      return {
+        ...item,
+        produtosDetalhes: updatedDetalhes,
+        produtos: activeDetalhes.map(pd => pd.nome).join(', '),
+        produtoIds: activeDetalhes.map(pd => pd.id)
+      };
+    }));
+
+    try {
+      const res = await fetch(`${API_BASE}/fornecedores?id=${fornecedorId}&toggleProdutoId=${produtoId}&novoStatus=${novoStatus}&_method=PUT`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ toggleProdutoId: produtoId, novoStatus })
+      });
+      if (res.ok) {
+        const saved = await res.json();
+        setFornecedores(prev => prev.map(item => item.id === fornecedorId ? saved : item));
+        notify(`Item marcado como ${novoStatus}.`);
+      } else {
+        notify('Erro ao atualizar status do item.');
+        loadData(true);
+      }
+    } catch {
+      notify('Erro ao sincronizar com servidor.');
+      loadData(true);
     }
   };
 
@@ -1313,11 +1422,16 @@ function SistemaFornecedoresCEASA() {
         {activeTab === 'fornecedores' && (
           <div>
             {filteredFornecedores.map((f) => {
-              const rawProds = (String(f.produtos || '')).split(',').filter(Boolean).map(s => s.trim());
-              const prodObjList = rawProds.map(pName => {
-                const found = produtos.find(prod => (prod.nome || '').toLowerCase() === pName.toLowerCase());
-                return found ? { codigo: found.codigo, nome: found.nome } : { codigo: '', nome: pName };
-              });
+              let activeProdsList = [];
+              if (Array.isArray(f.produtosDetalhes) && f.produtosDetalhes.length > 0) {
+                activeProdsList = f.produtosDetalhes.filter(pd => (pd.status || 'Ativo') !== 'Inativo');
+              } else {
+                const rawProds = (String(f.produtos || '')).split(',').filter(Boolean).map(s => s.trim());
+                activeProdsList = rawProds.map(pName => {
+                  const found = produtos.find(prod => (prod.nome || '').toLowerCase() === pName.toLowerCase());
+                  return found ? { codigo: found.codigo, nome: found.nome } : { codigo: '', nome: pName };
+                });
+              }
               const isSelected = selectedId === f.id;
               const isInativo = f.status === 'Inativo';
 
@@ -1335,15 +1449,15 @@ function SistemaFornecedoresCEASA() {
                       {isInativo && <span className="status-tag-inativo">INATIVO</span>}
                     </div>
                     <div className="pr">
-                      {prodObjList.length === 0 ? (
+                      {activeProdsList.length === 0 ? (
                         'Nenhum produto vinculado'
                       ) : (
-                        prodObjList.slice(0, 4).map(p => `${p.codigo ? '#' + p.codigo + ' ' : ''}${p.nome}`).join(' • ') +
-                        (prodObjList.length > 4 ? ` +${prodObjList.length - 4}` : '')
+                        activeProdsList.slice(0, 4).map(p => `${p.codigo ? '#' + p.codigo + ' ' : ''}${p.nome}`).join(' • ') +
+                        (activeProdsList.length > 4 ? ` +${activeProdsList.length - 4}` : '')
                       )}
                     </div>
                   </div>
-                  <span className="q">{prodObjList.length}</span>
+                  <span className="q">{activeProdsList.length}</span>
                 </div>
               );
             })}
@@ -1455,11 +1569,28 @@ function SistemaFornecedoresCEASA() {
               <div style={{ overflowY: 'auto', maxHeight: '52vh' }}>
                 {selectedItemData.productList.map((p, idx) => {
                   const details = parseProductDetails(p.nome);
+                  const isItemInativo = (p.status || 'Ativo') === 'Inativo';
                   return (
-                    <div key={idx} className="pl">
+                    <div key={p.id || idx} className={`pl ${isItemInativo ? 'inativo' : ''}`}>
                       <span className="id">#{p.codigo || '—'}</span>
-                      <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{details.name}</span>
-                      <span style={{ textAlign: 'right' }}>{details.unit}</span>
+                      <div style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <span>{details.name}</span>
+                        {isItemInativo && <span className="status-tag-inativo">INATIVO</span>}
+                      </div>
+                      <span style={{ textAlign: 'right' }} className="unit-col">{details.unit}</span>
+                      {p.id && (
+                        <button
+                          type="button"
+                          className="item-toggle-btn"
+                          title={isItemInativo ? 'Ativar item para este fornecedor' : 'Inativar item para este fornecedor'}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleProdutoStatus(selectedItemData.data.id, p.id);
+                          }}
+                        >
+                          {isItemInativo ? 'Ativar' : 'Inativar'}
+                        </button>
+                      )}
                     </div>
                   );
                 })}
