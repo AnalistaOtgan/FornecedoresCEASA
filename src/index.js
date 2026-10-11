@@ -144,7 +144,7 @@ async function handleFornecedores(request, env, url) {
       const id = url.searchParams.get('id');
       if (id) {
         const rs = await client.execute({
-          sql: 'SELECT id, codigo, nome, apelido FROM fornecedores WHERE id = ?',
+          sql: "SELECT id, codigo, nome, apelido, COALESCE(status, 'Ativo') AS status FROM fornecedores WHERE id = ?",
           args: [id],
         });
         if (rs.rows.length === 0) {
@@ -166,7 +166,7 @@ async function handleFornecedores(request, env, url) {
         return json(fornecedor);
       } else {
         const rs = await client.execute(`
-          SELECT f.id, f.codigo, f.nome, f.apelido, p.id AS p_id, p.codigo AS p_codigo, p.nome AS p_nome
+          SELECT f.id, f.codigo, f.nome, f.apelido, COALESCE(f.status, 'Ativo') AS status, p.id AS p_id, p.codigo AS p_codigo, p.nome AS p_nome
           FROM fornecedores f
           LEFT JOIN fornecedor_produto fp ON fp.fornecedor_id = f.id
           LEFT JOIN produtos p ON p.id = fp.produto_id
@@ -181,6 +181,7 @@ async function handleFornecedores(request, env, url) {
               codigo: row.codigo,
               nome: row.nome,
               apelido: row.apelido,
+              status: row.status || 'Ativo',
               produtoList: [],
               produtoIdList: [],
             });
@@ -196,6 +197,7 @@ async function handleFornecedores(request, env, url) {
           codigo: f.codigo,
           nome: f.nome,
           apelido: f.apelido,
+          status: f.status || 'Ativo',
           produtos: f.produtoList.join(', '),
           produtoIds: f.produtoIdList,
         }));
@@ -205,15 +207,17 @@ async function handleFornecedores(request, env, url) {
     }
 
     if (method === 'POST') {
-      const { codigo, nome, apelido, produtoIds } = body || {};
+      const { codigo, nome, apelido, status, produtoIds } = body || {};
       if (!codigo || !nome) {
         return json({ error: 'Código e nome são obrigatórios' }, 400);
       }
 
+      const fornecedorStatus = status === 'Inativo' ? 'Inativo' : 'Ativo';
+
       const stmts = [
         {
-          sql: 'INSERT INTO fornecedores (codigo, nome, apelido) VALUES (?, ?, ?)',
-          args: [codigo, nome, apelido || ''],
+          sql: 'INSERT INTO fornecedores (codigo, nome, apelido, status) VALUES (?, ?, ?, ?)',
+          args: [codigo, nome, apelido || '', fornecedorStatus],
         },
       ];
 
@@ -230,7 +234,7 @@ async function handleFornecedores(request, env, url) {
       }
 
       const fRs = await client.execute({
-        sql: 'SELECT id, codigo, nome, apelido FROM fornecedores WHERE id = ?',
+        sql: "SELECT id, codigo, nome, apelido, COALESCE(status, 'Ativo') AS status FROM fornecedores WHERE id = ?",
         args: [fornecedorId],
       });
       const f = fRs.rows[0];
@@ -250,13 +254,15 @@ async function handleFornecedores(request, env, url) {
 
     if (method === 'PUT') {
       const id = url.searchParams.get('id');
-      const { codigo, nome, apelido, produtoIds } = body || {};
+      const { codigo, nome, apelido, status, produtoIds } = body || {};
       if (!id || id <= 0) return json({ error: 'ID inválido' }, 400);
+
+      const fornecedorStatus = status === 'Inativo' ? 'Inativo' : 'Ativo';
 
       const stmts = [
         {
-          sql: 'UPDATE fornecedores SET codigo = ?, nome = ?, apelido = ? WHERE id = ?',
-          args: [codigo, nome, apelido || '', id],
+          sql: 'UPDATE fornecedores SET codigo = ?, nome = ?, apelido = ?, status = ? WHERE id = ?',
+          args: [codigo, nome, apelido || '', fornecedorStatus, id],
         },
         {
           sql: 'DELETE FROM fornecedor_produto WHERE fornecedor_id = ?',
@@ -275,7 +281,7 @@ async function handleFornecedores(request, env, url) {
       await client.batch(stmts, 'write');
 
       const fRs = await client.execute({
-        sql: 'SELECT id, codigo, nome, apelido FROM fornecedores WHERE id = ?',
+        sql: "SELECT id, codigo, nome, apelido, COALESCE(status, 'Ativo') AS status FROM fornecedores WHERE id = ?",
         args: [id],
       });
       const f = fRs.rows[0];

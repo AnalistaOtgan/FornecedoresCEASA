@@ -331,6 +331,105 @@ a {
   background: rgba(241, 199, 59, 0.12);
 }
 
+/* Linha de Fornecedor Inativo: Fundo vermelho e dados em branco */
+.r.inativo {
+  background: var(--red);
+  color: #ffffff;
+  border-bottom-color: rgba(255, 255, 255, 0.22);
+}
+.r.inativo .id,
+.r.inativo .nm,
+.r.inativo .ap,
+.r.inativo .pr,
+.r.inativo .q {
+  color: #ffffff;
+}
+.r.inativo .ap,
+.r.inativo .pr,
+.r.inativo .q {
+  color: rgba(255, 255, 255, 0.92);
+}
+.r.inativo:hover:not(.on) {
+  background: #961922;
+}
+.r.inativo.on {
+  background: #80141c;
+  box-shadow: inset 4px 0 0 #ffffff;
+}
+
+/* Badges e Botões de Status */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 2px;
+}
+.status-badge.ativo {
+  background: rgba(27, 27, 26, 0.08);
+  color: var(--ink);
+  border: 1px solid var(--border);
+}
+[data-theme="dark"] .status-badge.ativo {
+  background: rgba(241, 199, 59, 0.15);
+  color: var(--yellow);
+  border: 1px solid var(--yellow);
+}
+.status-badge.inativo {
+  background: var(--red);
+  color: #ffffff;
+  border: 1px solid var(--red);
+}
+
+.status-tag-inativo {
+  display: inline-block;
+  background: #ffffff;
+  color: var(--red);
+  font-size: 9px;
+  font-weight: 800;
+  padding: 1px 5px;
+  margin-left: 8px;
+  letter-spacing: .05em;
+  vertical-align: middle;
+}
+
+.status-btn {
+  flex: 1;
+  padding: 10px 14px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  border: 2px solid var(--border);
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  transition: all 0.12s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.status-btn.ativo-selected {
+  background: #1b1b1a;
+  color: #f1c73b;
+  border-color: #1b1b1a;
+}
+[data-theme="dark"] .status-btn.ativo-selected {
+  background: #f1c73b;
+  color: #1b1b1a;
+  border-color: #f1c73b;
+}
+.status-btn.inativo-selected {
+  background: var(--red);
+  color: #ffffff;
+  border-color: var(--red);
+}
+
 .nm {
   font-size: 21px;
 }
@@ -616,7 +715,7 @@ function SistemaFornecedoresCEASA() {
   const [confirmModal, setConfirmModal] = useState(null);
 
   // Formulário de Fornecedor
-  const [formData, setFormData] = useState({ codigo: '', nome: '', apelido: '' });
+  const [formData, setFormData] = useState({ codigo: '', nome: '', apelido: '', status: 'Ativo' });
   const [selectedProdutos, setSelectedProdutos] = useState([]);
   const [produtoSearchTerm, setProdutoSearchTerm] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
@@ -721,10 +820,23 @@ function SistemaFornecedoresCEASA() {
 
   const norm = (s) => (s || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
+  // Contagens por Status de Fornecedores
+  const ativosCount = useMemo(() => {
+    return fornecedores.filter(f => (f.status || 'Ativo') !== 'Inativo').length;
+  }, [fornecedores]);
+
+  const inativosCount = useMemo(() => {
+    return fornecedores.filter(f => f.status === 'Inativo').length;
+  }, [fornecedores]);
+
   // Fornecedores Filtrados
   const filteredFornecedores = useMemo(() => {
     let list = fornecedores;
-    if (subFilter === 'sem_vinculo') {
+    if (subFilter === 'ativos') {
+      list = list.filter(f => (f.status || 'Ativo') !== 'Inativo');
+    } else if (subFilter === 'inativos') {
+      list = list.filter(f => f.status === 'Inativo');
+    } else if (subFilter === 'sem_vinculo') {
       list = list.filter(f => {
         const pIds = Array.isArray(f.produtoIds) ? f.produtoIds : [];
         const pStr = (f.produtos || '').split(',').filter(Boolean);
@@ -737,7 +849,8 @@ function SistemaFornecedoresCEASA() {
       norm(f.codigo).includes(q) ||
       norm(f.nome).includes(q) ||
       norm(f.apelido).includes(q) ||
-      norm(f.produtos).includes(q)
+      norm(f.produtos).includes(q) ||
+      norm(f.status || 'Ativo').includes(q)
     );
   }, [fornecedores, subFilter, searchTerm]);
 
@@ -810,11 +923,12 @@ function SistemaFornecedoresCEASA() {
   // Exportar CSV
   const handleExportCSV = () => {
     if (activeTab === 'fornecedores') {
-      const headers = ['Código', 'Nome', 'Apelido', 'Produtos'];
+      const headers = ['Código', 'Nome', 'Apelido', 'Status', 'Produtos'];
       const rows = filteredFornecedores.map(f => [
         `"${f.codigo || ''}"`,
         `"${(f.nome || '').replace(/"/g, '""')}"`,
         `"${(f.apelido || '').replace(/"/g, '""')}"`,
+        `"${f.status || 'Ativo'}"`,
         `"${(f.produtos || '').replace(/"/g, '""')}"`
       ]);
       const csv = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
@@ -851,7 +965,12 @@ function SistemaFornecedoresCEASA() {
     if (activeTab === 'fornecedores') {
       if (item) {
         setEditingId(item.id);
-        setFormData({ codigo: item.codigo || '', nome: item.nome || '', apelido: item.apelido || '' });
+        setFormData({
+          codigo: item.codigo || '',
+          nome: item.nome || '',
+          apelido: item.apelido || '',
+          status: item.status || 'Ativo'
+        });
         if (Array.isArray(item.produtoIds)) {
           setSelectedProdutos(item.produtoIds);
         } else {
@@ -863,7 +982,7 @@ function SistemaFornecedoresCEASA() {
         }
       } else {
         setEditingId(null);
-        setFormData({ codigo: '', nome: '', apelido: '' });
+        setFormData({ codigo: '', nome: '', apelido: '', status: 'Ativo' });
         setSelectedProdutos([]);
       }
     } else {
@@ -883,7 +1002,7 @@ function SistemaFornecedoresCEASA() {
   const handleCloseModal = () => {
     setShowModal(false);
     setEditingId(null);
-    setFormData({ codigo: '', nome: '', apelido: '' });
+    setFormData({ codigo: '', nome: '', apelido: '', status: 'Ativo' });
     setProdutoFormData({ codigo: '', nome: '' });
     setSelectedProdutos([]);
     setShowDropdown(false);
@@ -898,6 +1017,7 @@ function SistemaFornecedoresCEASA() {
       codigo: formData.codigo,
       nome: formData.nome,
       apelido: formData.apelido,
+      status: formData.status || 'Ativo',
       produtoIds: selectedProdutos
     };
     try {
@@ -925,6 +1045,29 @@ function SistemaFornecedoresCEASA() {
       handleCloseModal();
     } catch {
       notify('Erro ao salvar no servidor.');
+    }
+  };
+
+  const handleToggleStatus = async (fornecedor) => {
+    const newStatus = fornecedor.status === 'Inativo' ? 'Ativo' : 'Inativo';
+    const payload = {
+      codigo: fornecedor.codigo,
+      nome: fornecedor.nome,
+      apelido: fornecedor.apelido,
+      status: newStatus,
+      produtoIds: fornecedor.produtoIds || []
+    };
+    try {
+      const res = await fetch(`${API_BASE}/fornecedores?id=${fornecedor.id}&_method=PUT`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const saved = await res.json();
+      setFornecedores(fornecedores.map(f => f.id === fornecedor.id ? saved : f));
+      notify(`Status alterado para ${newStatus}.`);
+    } catch {
+      notify('Erro ao alterar status.');
     }
   };
 
@@ -1049,6 +1192,28 @@ function SistemaFornecedoresCEASA() {
               <span>{activeTab === 'fornecedores' ? fornecedores.length : produtos.length}</span>
             </a>
 
+            {activeTab === 'fornecedores' && (
+              <>
+                <a
+                  className={`nv ${subFilter === 'ativos' ? 'on' : ''}`}
+                  href="#"
+                  onClick={(e) => { e.preventDefault(); setSubFilter('ativos'); }}
+                >
+                  <span>Ativos</span>
+                  <span>{ativosCount}</span>
+                </a>
+
+                <a
+                  className={`nv ${subFilter === 'inativos' ? 'on' : ''}`}
+                  href="#"
+                  onClick={(e) => { e.preventDefault(); setSubFilter('inativos'); }}
+                >
+                  <span>Inativos</span>
+                  <span>{inativosCount}</span>
+                </a>
+              </>
+            )}
+
             <a
               className={`nv ${subFilter === 'sem_vinculo' ? 'on' : ''}`}
               href="#"
@@ -1154,11 +1319,12 @@ function SistemaFornecedoresCEASA() {
                 return found ? { codigo: found.codigo, nome: found.nome } : { codigo: '', nome: pName };
               });
               const isSelected = selectedId === f.id;
+              const isInativo = f.status === 'Inativo';
 
               return (
                 <div
                   key={f.id}
-                  className={`r ${isSelected ? 'on' : ''}`}
+                  className={`r ${isSelected ? 'on' : ''} ${isInativo ? 'inativo' : ''}`}
                   onClick={() => setSelectedId(f.id)}
                 >
                   <span className="id">#{f.codigo}</span>
@@ -1166,6 +1332,7 @@ function SistemaFornecedoresCEASA() {
                     <div className="c nm">
                       {f.nome}
                       {f.apelido && <span className="ap">{f.apelido}</span>}
+                      {isInativo && <span className="status-tag-inativo">INATIVO</span>}
                     </div>
                     <div className="pr">
                       {prodObjList.length === 0 ? (
@@ -1241,11 +1408,26 @@ function SistemaFornecedoresCEASA() {
           {selectedItemData.type === 'fornecedor' ? (
             <>
               <div>
-                <span className="id">#{selectedItemData.data.codigo}</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span className="id">#{selectedItemData.data.codigo}</span>
+                  <span className={`status-badge ${(selectedItemData.data.status || 'Ativo') === 'Inativo' ? 'inativo' : 'ativo'}`}>
+                    {(selectedItemData.data.status || 'Ativo') === 'Inativo' ? '● Inativo' : '● Ativo'}
+                  </span>
+                </div>
                 <h2 className="c aside-title">{selectedItemData.data.nome}</h2>
-                <span className="k" style={{ color: 'var(--muted)' }}>
-                  Apelido: {selectedItemData.data.apelido || '—'}
-                </span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+                  <span className="k" style={{ color: 'var(--muted)' }}>
+                    Apelido: {selectedItemData.data.apelido || '—'}
+                  </span>
+                  <button
+                    type="button"
+                    className="l"
+                    style={{ fontSize: '11px', textTransform: 'uppercase' }}
+                    onClick={() => handleToggleStatus(selectedItemData.data)}
+                  >
+                    Marcar {(selectedItemData.data.status || 'Ativo') === 'Inativo' ? 'Ativo' : 'Inativo'}
+                  </button>
+                </div>
               </div>
 
               <div style={{ display: 'flex', gap: '20px' }}>
@@ -1398,6 +1580,26 @@ function SistemaFornecedoresCEASA() {
                 onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
                 required
               />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Status do Fornecedor</label>
+              <div style={{ display: 'flex', gap: '12px', marginTop: '6px' }}>
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, status: 'Ativo' })}
+                  className={`status-btn ${(formData.status || 'Ativo') === 'Ativo' ? 'ativo-selected' : ''}`}
+                >
+                  ● Ativo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, status: 'Inativo' })}
+                  className={`status-btn ${formData.status === 'Inativo' ? 'inativo-selected' : ''}`}
+                >
+                  ● Inativo
+                </button>
+              </div>
             </div>
 
             <div className="form-group">

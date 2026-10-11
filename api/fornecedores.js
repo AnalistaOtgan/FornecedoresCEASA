@@ -24,7 +24,7 @@ module.exports = async function handler(req, res) {
       const id = req.query.id;
       if (id) {
         const rs = await client.execute({
-          sql: 'SELECT id, codigo, nome, apelido FROM fornecedores WHERE id = ?',
+          sql: "SELECT id, codigo, nome, apelido, COALESCE(status, 'Ativo') AS status FROM fornecedores WHERE id = ?",
           args: [id]
         });
         if (rs.rows.length === 0) {
@@ -45,7 +45,7 @@ module.exports = async function handler(req, res) {
         
         return res.status(200).json(fornecedor);
       } else {
-        const rs = await client.execute('SELECT id, codigo, nome, apelido FROM fornecedores ORDER BY id');
+        const rs = await client.execute("SELECT id, codigo, nome, apelido, COALESCE(status, 'Ativo') AS status FROM fornecedores ORDER BY id");
         const fornecedores = rs.rows;
         
         // Buscar produtos para cada fornecedor
@@ -67,16 +67,18 @@ module.exports = async function handler(req, res) {
     }
     
     if (method === 'POST') {
-      const { codigo, nome, apelido, produtoIds } = req.body || {};
+      const { codigo, nome, apelido, status, produtoIds } = req.body || {};
       if (!codigo || !nome) {
         return res.status(400).json({ error: 'Código e nome são obrigatórios' });
       }
       
+      const fornecedorStatus = status === 'Inativo' ? 'Inativo' : 'Ativo';
+
       // Iniciar transação (batch no Turso)
       const stmts = [];
       stmts.push({
-        sql: 'INSERT INTO fornecedores (codigo, nome, apelido) VALUES (?, ?, ?)',
-        args: [codigo, nome, apelido || '']
+        sql: 'INSERT INTO fornecedores (codigo, nome, apelido, status) VALUES (?, ?, ?, ?)',
+        args: [codigo, nome, apelido || '', fornecedorStatus]
       });
       
       const results = await client.batch(stmts, 'write');
@@ -93,7 +95,7 @@ module.exports = async function handler(req, res) {
       
       // Buscar o inserido
       const fRs = await client.execute({
-        sql: 'SELECT id, codigo, nome, apelido FROM fornecedores WHERE id = ?',
+        sql: "SELECT id, codigo, nome, apelido, COALESCE(status, 'Ativo') AS status FROM fornecedores WHERE id = ?",
         args: [fornecedorId]
       });
       const f = fRs.rows[0];
@@ -113,13 +115,15 @@ module.exports = async function handler(req, res) {
     
     if (method === 'PUT') {
       const id = req.query.id;
-      const { codigo, nome, apelido, produtoIds } = req.body || {};
+      const { codigo, nome, apelido, status, produtoIds } = req.body || {};
       if (!id || id <= 0) return res.status(400).json({ error: 'ID inválido' });
       
+      const fornecedorStatus = status === 'Inativo' ? 'Inativo' : 'Ativo';
+
       const stmts = [];
       stmts.push({
-        sql: 'UPDATE fornecedores SET codigo = ?, nome = ?, apelido = ? WHERE id = ?',
-        args: [codigo, nome, apelido || '', id]
+        sql: 'UPDATE fornecedores SET codigo = ?, nome = ?, apelido = ?, status = ? WHERE id = ?',
+        args: [codigo, nome, apelido || '', fornecedorStatus, id]
       });
       stmts.push({
         sql: 'DELETE FROM fornecedor_produto WHERE fornecedor_id = ?',
@@ -138,7 +142,7 @@ module.exports = async function handler(req, res) {
       
       // Buscar atualizado
       const fRs = await client.execute({
-        sql: 'SELECT id, codigo, nome, apelido FROM fornecedores WHERE id = ?',
+        sql: "SELECT id, codigo, nome, apelido, COALESCE(status, 'Ativo') AS status FROM fornecedores WHERE id = ?",
         args: [id]
       });
       const f = fRs.rows[0];
