@@ -144,15 +144,69 @@ a {
   grid-template-columns: 248px 1fr;
 }
 
-/* Painel Esquerdo Amarelo de Navegação */
+/* Painel Esquerdo Amarelo de Navegação (Fixo e Sempre Visível) */
 .nav-side {
   background: var(--nav-bg);
   color: var(--nav-ink);
-  padding: 28px 24px;
+  padding: 24px 20px;
   display: flex;
   flex-direction: column;
-  gap: 28px;
   box-sizing: border-box;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  max-height: 100vh;
+  z-index: 10;
+}
+
+.nav-side-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  overflow-y: auto;
+  min-height: 0;
+  padding-right: 4px;
+}
+.nav-side-body::-webkit-scrollbar {
+  width: 4px;
+}
+.nav-side-body::-webkit-scrollbar-thumb {
+  background: rgba(27, 27, 26, 0.25);
+  border-radius: 2px;
+}
+
+.nav-side-footer {
+  flex-shrink: 0;
+  padding-top: 18px;
+  margin-top: auto;
+  border-top: 1px solid rgba(27, 27, 26, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.nav-side-footer button {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+  color: var(--nav-ink);
+  transition: opacity 0.15s ease;
+}
+.nav-side-footer button:hover {
+  opacity: 0.75;
+}
+.nav-side-footer a {
+  color: var(--nav-ink);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.nav-side-footer a:hover {
+  text-decoration: underline;
 }
 
 .nv {
@@ -296,7 +350,7 @@ a {
   font-weight: 600;
 }
 
-/* Coluna Direita: Ficha Técnica Detalhada */
+/* Coluna Direita: Ficha Técnica Detalhada (Fixa ao Rolar) */
 .aside-detail {
   border-left: 2px solid var(--border);
   padding: 28px;
@@ -305,6 +359,11 @@ a {
   gap: 18px;
   box-sizing: border-box;
   background: var(--paper);
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  max-height: 100vh;
+  overflow-y: auto;
 }
 
 .aside-title {
@@ -943,79 +1002,75 @@ function SistemaFornecedoresCEASA() {
           COLUNA 1 (248px): NAVEGAÇÃO LATERAL AMARELA
           ======================================================== */}
       <nav className="nav-side" aria-label="Navegação">
-        <div>
-          <div className="k">Fort Supermercados · Suprimentos</div>
-          <h1 className="c" style={{ fontSize: '21px', marginTop: '10px' }}>Fornecedores CEASA</h1>
+        <div className="nav-side-body">
+          <div>
+            <div className="k">Fort Supermercados · Suprimentos</div>
+            <h1 className="c" style={{ fontSize: '21px', marginTop: '10px' }}>Fornecedores CEASA</h1>
+          </div>
+
+          <div>
+            <a
+              className={`nv ${activeTab === 'fornecedores' ? 'on' : ''}`}
+              href="#"
+              onClick={(e) => { e.preventDefault(); setActiveTab('fornecedores'); setSubFilter('todos'); }}
+            >
+              <span>Fornecedores</span>
+              <span>{fornecedores.length}</span>
+            </a>
+
+            <a
+              className={`nv ${activeTab === 'produtos' ? 'on' : ''}`}
+              href="#"
+              onClick={(e) => { e.preventDefault(); setActiveTab('produtos'); setSubFilter('todos'); }}
+            >
+              <span>Produtos &amp; Fornecedores</span>
+              <span>{produtos.length}</span>
+            </a>
+
+            <a
+              className="nv"
+              href="#"
+              style={{ borderBottom: '1px solid var(--border)' }}
+              onClick={(e) => { e.preventDefault(); setActiveTab('fornecedores'); }}
+            >
+              <span>Vínculos ativos</span>
+              <span>{totalVinculacoes}</span>
+            </a>
+          </div>
+
+          <div>
+            <div className="k" style={{ marginBottom: '8px' }}>Filtros</div>
+            <a
+              className={`nv ${subFilter === 'todos' ? 'on' : ''}`}
+              href="#"
+              onClick={(e) => { e.preventDefault(); setSubFilter('todos'); }}
+            >
+              <span>Todos</span>
+              <span>{activeTab === 'fornecedores' ? fornecedores.length : produtos.length}</span>
+            </a>
+
+            <a
+              className={`nv ${subFilter === 'sem_vinculo' ? 'on' : ''}`}
+              href="#"
+              style={{ borderBottom: '1px solid var(--border)' }}
+              onClick={(e) => { e.preventDefault(); setSubFilter('sem_vinculo'); }}
+            >
+              <span>{activeTab === 'fornecedores' ? 'Sem produto vinculado' : 'Sem fornecedor vinculado'}</span>
+              <span>{semVinculoCount}</span>
+            </a>
+          </div>
         </div>
 
-        <div>
-          <a
-            className={`nv ${activeTab === 'fornecedores' ? 'on' : ''}`}
-            href="#"
-            onClick={(e) => { e.preventDefault(); setActiveTab('fornecedores'); setSubFilter('todos'); }}
-          >
-            <span>Fornecedores</span>
-            <span>{fornecedores.length}</span>
-          </a>
-
-          <a
-            className={`nv ${activeTab === 'produtos' ? 'on' : ''}`}
-            href="#"
-            onClick={(e) => { e.preventDefault(); setActiveTab('produtos'); setSubFilter('todos'); }}
-          >
-            <span>Produtos &amp; Fornecedores</span>
-            <span>{produtos.length}</span>
-          </a>
-
-          <a
-            className="nv"
-            href="#"
-            style={{ borderBottom: '1px solid var(--border)' }}
-            onClick={(e) => { e.preventDefault(); setActiveTab('fornecedores'); }}
-          >
-            <span>Vínculos ativos</span>
-            <span>{totalVinculacoes}</span>
-          </a>
-        </div>
-
-        <div>
-          <div className="k" style={{ marginBottom: '8px' }}>Filtros</div>
-          <a
-            className={`nv ${subFilter === 'todos' ? 'on' : ''}`}
-            href="#"
-            onClick={(e) => { e.preventDefault(); setSubFilter('todos'); }}
-          >
-            <span>Todos</span>
-            <span>{activeTab === 'fornecedores' ? fornecedores.length : produtos.length}</span>
-          </a>
-
-          <a
-            className={`nv ${subFilter === 'sem_vinculo' ? 'on' : ''}`}
-            href="#"
-            style={{ borderBottom: '1px solid var(--border)' }}
-            onClick={(e) => { e.preventDefault(); setSubFilter('sem_vinculo'); }}
-          >
-            <span>{activeTab === 'fornecedores' ? 'Sem produto vinculado' : 'Sem fornecedor vinculado'}</span>
-            <span>{semVinculoCount}</span>
-          </a>
-        </div>
-
-        {/* Rodapé da Barra de Navegação: Seletor de Tema e Link ao Portal */}
-        <div style={{ marginTop: 'auto', fontSize: '12px', fontWeight: '600', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        {/* Rodapé Fixo da Barra de Navegação: Seletor de Tema e Link ao Portal */}
+        <div className="nav-side-footer">
           <span>
             Tema:{' '}
             <button
               type="button"
               onClick={() => setTheme('light')}
               style={{
-                background: 'none',
-                border: '0',
-                padding: '0',
-                font: 'inherit',
-                cursor: 'pointer',
                 fontWeight: theme === 'light' ? '800' : '500',
-                textDecoration: theme === 'light' ? 'underline' : 'none',
-                color: 'var(--nav-ink)'
+                textDecoration: theme === 'light' ? 'underline' : 'none'
               }}
             >
               Claro
@@ -1025,14 +1080,8 @@ function SistemaFornecedoresCEASA() {
               type="button"
               onClick={() => setTheme('dark')}
               style={{
-                background: 'none',
-                border: '0',
-                padding: '0',
-                font: 'inherit',
-                cursor: 'pointer',
                 fontWeight: theme === 'dark' ? '800' : '500',
-                textDecoration: theme === 'dark' ? 'underline' : 'none',
-                color: 'var(--nav-ink)'
+                textDecoration: theme === 'dark' ? 'underline' : 'none'
               }}
             >
               Escuro
